@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="app.js"></script>
   <style>
     :root {
       --bg:      #060a14;
@@ -271,18 +272,6 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const API = "http://localhost:8000";
-const SUPABASE_URL  = "https://fxafybrtuvxaxlrxhepq.supabase.co";
-const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YWZ5YnJ0dXZ4YXhscnhoZXBxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE4Njk3MDksImV4cCI6MjA3NzQ0NTcwOX0.F2V0DZYQV_2YkAQAzdwXlu_AbU1IFq49TE6PcihTk1c";
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
-
-const token = localStorage.getItem("access_token") || "";
-if (!token) window.location.href = "login.html";
-
-function authHeaders() {
-  return { "Content-Type": "application/json", "Authorization": `Bearer ${token}` };
-}
-
 let toastTimer;
 function showToast(msg, type = "") {
   const el = document.getElementById("toast");
@@ -295,7 +284,7 @@ function showToast(msg, type = "") {
 async function loadProfile() {
   const [profileRes, userRes] = await Promise.all([
     fetch(`${API}/profile`, { headers: authHeaders() }).then(r => r.json()),
-    sb.auth.getUser(token)
+    sb.auth.getUser(getToken())
   ]);
 
   const email = userRes.data?.user?.email || "";
@@ -342,7 +331,7 @@ async function uploadAvatar(file) {
 
   const res = await fetch(`${API}/profile/avatar`, {
     method: "POST",
-    headers: { "Authorization": `Bearer ${token}` },
+    headers: { "Authorization": `Bearer ${getToken()}` },
     body: form
   });
   const data = await res.json();
@@ -356,13 +345,10 @@ async function uploadAvatar(file) {
   document.getElementById("avatarInput").value = "";
 }
 
-async function logout() {
-  await sb.auth.signOut();
-  localStorage.clear();
-  window.location.href = "login.html";
-}
-
-loadProfile();
+(async () => {
+  if (!(await initApp({ requireAuth: true }))) return;
+  await loadProfile();
+})();
 </script>
 </body>
 </html>
