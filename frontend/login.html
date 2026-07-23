@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="app.js"></script>
   <style>
     :root {
       --bg: #04070f;
@@ -296,12 +297,7 @@
   </div>
 
   <script>
-    const SUPABASE_URL  = "https://fxafybrtuvxaxlrxhepq.supabase.co";
-    const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YWZ5YnJ0dXZ4YXhscnhoZXBxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE4Njk3MDksImV4cCI6MjA3NzQ0NTcwOX0.F2V0DZYQV_2YkAQAzdwXlu_AbU1IFq49TE6PcihTk1c";
-    const API_BASE      = "http://localhost:8000";  // URL da sua FastAPI
-
-    const sb  = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
-    let mode  = "signin";
+    let mode = "signin";
 
     function switchTab(m) {
       mode = m;
@@ -335,6 +331,7 @@
       }
 
       setLoading(true);
+      if (!sb) await initApp();
 
       if (mode === "signin") {
         const { data, error } = await sb.auth.signInWithPassword({ email, password });
@@ -362,6 +359,7 @@
 
     // Se já logado, redirecionar
     (async () => {
+      await initApp();
       const { data } = await sb.auth.getSession();
       if (data?.session) {
         localStorage.setItem("access_token", data.session.access_token);

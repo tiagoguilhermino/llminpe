@@ -1,0 +1,6 @@
+# Dependências mínimas para rodar eval_rag.py na máquina local
+httpx>=0.27.0
+python-dotenv>=1.0.0
+
+# Opcional: métrica Faithfulness com BERTScore (instala PyTorch automaticamente)
+# bert-score>=0.3.13

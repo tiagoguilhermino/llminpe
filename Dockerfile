@@ -21,6 +21,7 @@ RUN python -c "from sentence_transformers import CrossEncoder; CrossEncoder('cro
 
 # Copia o código
 COPY main.py .
+COPY eval_rag.py .
 COPY frontend/ ./frontend/
 
 # Cria pastas necessárias

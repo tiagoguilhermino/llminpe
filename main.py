@@ -10,14 +10,18 @@ import uuid
 import pickle
 import json
 import asyncio
+import math
+import re
+import unicodedata
 from pathlib import Path
 from contextlib import contextmanager
 from typing import List, Optional
+from dataclasses import dataclass
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import StreamingResponse, PlainTextResponse
+from fastapi.responses import StreamingResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -72,16 +76,32 @@ def measure(metrics_dict: dict, name: str):
 # Configuração do ambiente
 # ─────────────────────────────────────────────────────────────────
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS",
-    "http://localhost:5500,http://127.0.0.1:5500,http://localhost:3000"
+    "http://localhost:5500,http://127.0.0.1:5500,http://localhost:3000,http://localhost:8000,http://127.0.0.1:8000"
 ).split(",")
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise RuntimeError("Configure SUPABASE_URL e SUPABASE_KEY no .env")
+if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+    raise RuntimeError("Configure SUPABASE_URL e SUPABASE_ANON_KEY no .env")
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+def _env_bool(*names: str, default: str = "false") -> bool:
+    for name in names:
+        value = os.getenv(name)
+        if value is not None:
+            return value.strip().lower() in ("true", "1", "yes")
+    return default.strip().lower() in ("true", "1", "yes")
+
+
+TESTE_MODE = _env_bool("TESTE_EVAL", "teste", "TEST")
+
+auth_client: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+admin_client: Optional[Client] = (
+    create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    if SUPABASE_SERVICE_ROLE_KEY
+    else None
+)
 
 # ─────────────────────────────────────────────────────────────────
 # App + Rate Limiting
@@ -111,10 +131,15 @@ app.mount("/static", StaticFiles(directory="frontend"), name="static")
 # ─────────────────────────────────────────────────────────────────
 # Modelos LangChain
 # ─────────────────────────────────────────────────────────────────
+nvidia_key = os.getenv("NVIDIA_API_KEY")
+NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "meta/llama-3.1-8b-instruct")
+NVIDIA_TIMEOUT = int(os.getenv("NVIDIA_TIMEOUT", "300"))
 llm = ChatNVIDIA(
-    model="meta/llama-3.3-70b-instruct",
+    model=NVIDIA_MODEL,
+    api_key=nvidia_key,
     temperature=1.00,
-    max_tokens=16384,
+    max_completion_tokens=16384,
+    timeout=NVIDIA_TIMEOUT,
 )
 emb = NVIDIAEmbeddings()
 
@@ -126,6 +151,7 @@ graph_cache: dict = {}
 # Helpers de disco
 # ─────────────────────────────────────────────────────────────────
 def user_storage_dir(user_id: str) -> Path:
+    '''Retorna o caminho do diretório de armazenamento do usuário, criando-o se necessário.'''
     base = Path("user_data") / user_id
     base.mkdir(parents=True, exist_ok=True)
     (base / "uploads").mkdir(exist_ok=True)
@@ -138,9 +164,11 @@ def graph_path_file(user_id: str, session_id: str) -> Path:
     return user_storage_dir(user_id) / f"graph_{session_id}.pkl"
 
 def uploads_index_path(user_id: str) -> Path:
+    '''Retorna o caminho do arquivo JSON que mantém o índice de uploads do usuário.'''
     return user_storage_dir(user_id) / "uploads_index.json"
 
 def load_uploads_index(user_id: str) -> dict:
+    '''Carrega o índice de uploads do usuário, que mapeia nomes originais para nomes seguros.'''
     p = uploads_index_path(user_id)
     if p.exists():
         return json.loads(p.read_text())
@@ -152,66 +180,128 @@ def save_uploads_index(user_id: str, index: dict):
 # ─────────────────────────────────────────────────────────────────
 # Autenticação
 # ─────────────────────────────────────────────────────────────────
-async def get_user_id(authorization: str = Header(None)) -> str:
+@dataclass
+class AuthContext:
+    user_id: str
+    token: str
+    is_bypass: bool = False
+
+
+def db_client_for(auth: AuthContext) -> Client:
+    """Cliente Supabase com permissões do usuário autenticado (RLS)."""
+    if auth.is_bypass:
+        if not admin_client:
+            raise HTTPException(
+                status_code=503,
+                detail="Configure SUPABASE_SERVICE_ROLE_KEY para o modo de avaliação",
+            )
+        return admin_client
+    client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+    client.postgrest.auth(auth.token)
+    client.storage._headers["authorization"] = f"Bearer {auth.token}"
+    return client
+
+
+async def get_auth(authorization: str = Header(None)) -> AuthContext:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Token não fornecido")
     token = authorization.split(" ", 1)[1]
-    
-    #  BYPASS 
+
     if token == "PIBIC_EVAL_MASTER_SECRET_2026":
-        # Retorna um ID de usuário estático para testes
-        return "00000000-0000-0000-0000-000000000000" 
-        
+        return AuthContext(
+            user_id="64d48d35-26a3-4b46-b175-53be923fa621",
+            token=token,
+            is_bypass=True,
+        )
+
     try:
-        user = supabase.auth.get_user(token)
-        return user.user.id
+        user = auth_client.auth.get_user(token)
+        return AuthContext(user_id=user.user.id, token=token)
     except Exception:
         raise HTTPException(status_code=401, detail="Token inválido ou expirado")
+
+
+async def get_user_id(auth: AuthContext = Depends(get_auth)) -> str:
+    return auth.user_id
+
+
+def verify_session_owner(db: Client, session_id: str, user_id: str):
+    r = (
+        db.table("chat_sessions")
+        .select("id")
+        .eq("id", session_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    if not r.data:
+        raise HTTPException(status_code=404, detail="Sessão não encontrada")
+
 
 # ─────────────────────────────────────────────────────────────────
 # Funções de sessão
 # ─────────────────────────────────────────────────────────────────
-def db_get_sessions(user_id: str):
+def db_get_sessions(db: Client, user_id: str):
     try:
-        r = supabase.table("chat_sessions").select("*").eq("user_id", user_id).order("created_at").execute()
+        r = db.table("chat_sessions").select("*").eq("user_id", user_id).order("created_at").execute()
         return r.data or []
-    except Exception:
+    except Exception as e:
+        print(f"❌ ERRO AO LISTAR SESSÕES: {e}")
         return []
 
-def db_create_session(user_id: str, name: str = "Nova Conversa") -> str:
+
+def db_create_session(db: Client, user_id: str, name: str = "Nova Conversa") -> str:
     try:
-        r = supabase.table("chat_sessions").insert({"user_id": user_id, "name": name}).execute()
+        r = db.table("chat_sessions").insert({"user_id": user_id, "name": name}).execute()
         return r.data[0]["id"]
-    except Exception:
-        sid = str(uuid.uuid4())
-        supabase.table("chat_sessions").insert({"id": sid, "user_id": user_id, "name": name}).execute()
-        return sid
+    except Exception as e:
+        print(f"❌ ERRO AO CRIAR SESSÃO: {e}")
+        raise HTTPException(status_code=500, detail="Não foi possível criar a sessão")
 
-def db_rename_session(session_id: str, name: str):
-    supabase.table("chat_sessions").update({"name": name}).eq("id", session_id).execute()
 
-def db_delete_session(session_id: str):
-    supabase.table("chat_sessions").delete().eq("id", session_id).execute()
-
-def db_load_messages(session_id: str):
+def db_rename_session(db: Client, session_id: str, user_id: str, name: str):
+    verify_session_owner(db, session_id, user_id)
     try:
-        r = supabase.table("chat_messages").select("*").eq("session_id", session_id).order("created_at").execute()
+        db.table("chat_sessions").update({"name": name}).eq("id", session_id).execute()
+    except Exception as e:
+        print(f"❌ ERRO AO RENOMEAR SESSÃO: {e}")
+        raise HTTPException(status_code=500, detail="Não foi possível renomear a sessão")
+
+
+def db_delete_session(db: Client, session_id: str, user_id: str):
+    verify_session_owner(db, session_id, user_id)
+    db.table("chat_messages").delete().eq("session_id", session_id).execute()
+    db.table("chat_sessions").delete().eq("id", session_id).execute()
+
+
+def db_load_messages(db: Client, session_id: str, user_id: str):
+    verify_session_owner(db, session_id, user_id)
+    try:
+        r = db.table("chat_messages").select("*").eq("session_id", session_id).order("created_at").execute()
         return r.data or []
-    except Exception:
+    except Exception as e:
+        print(f"❌ ERRO AO CARREGAR MENSAGENS: {e}")
         return []
 
-def db_save_message(session_id: str, role: str, content: str):
-    supabase.table("chat_messages").insert({
-        "session_id": session_id, "role": role, "content": content
-    }).execute()
+
+def db_save_message(db: Client, session_id: str, user_id: str, role: str, content: str):
+    verify_session_owner(db, session_id, user_id)
+    try:
+        db.table("chat_messages").insert({
+            "session_id": session_id, "role": role, "content": content
+        }).execute()
+    except Exception as e:
+        print(f"❌ ERRO AO SALVAR MENSAGEM NO BANCO: {e}")
+
 
 # ─────────────────────────────────────────────────────────────────
 # RAG
 # ─────────────────────────────────────────────────────────────────
 def load_documents(user_id: str):
+    '''Carrega documentos PDF e TXT do usuário, retornando uma lista de objetos Document.'''
     docs = []
     index = load_uploads_index(user_id)
-    safe_to_original = {v: k for k, v in index.items()}
+    safe_to_original = {v: k for k, v in index.items()}#substituo o nome do arquivo seguro pelo nome original do arquivo
 
     for folder in [Path("docs"), user_storage_dir(user_id) / "uploads"]:
         if not folder.exists():
@@ -220,15 +310,16 @@ def load_documents(user_id: str):
             if not f.is_file():
                 continue
             try:
+                #vou escolher o tipo de loader baseado na extensão do arquivo
                 if f.suffix.lower() == ".pdf":
                     loader = PyPDFLoader(str(f))
                 elif f.suffix.lower() == ".txt":
                     loader = TextLoader(str(f), encoding="utf-8")
                 else:
                     continue
-                loaded = loader.load()
+                loaded = loader.load() #carrego o documento e o separo em páginas
                 display_name = safe_to_original.get(f.name, f.name)
-                for d in loaded:
+                for d in loaded:#adiciono o nome original do arquivo no metadata de cada página
                     d.metadata["filename"] = display_name
                 docs.extend(loaded)
             except Exception:
@@ -236,6 +327,7 @@ def load_documents(user_id: str):
     return docs
 
 def should_rebuild(user_id: str, session_id: str) -> bool:
+    '''Verifica se o índice FAISS precisa ser reconstruído com base na data de modificação dos documentos.'''
     fp = faiss_path(user_id, session_id)
     if not fp.exists():
         return True
@@ -249,8 +341,9 @@ def should_rebuild(user_id: str, session_id: str) -> bool:
     return False
 
 def build_or_load_vectors(user_id: str, session_id: str, force: bool = False):
+    '''Carrega ou constrói o índice FAISS para o usuário e sessão especificados.'''
     cache_key = (user_id, session_id)
-    if not force and cache_key in vectors_cache:
+    if not force and cache_key in vectors_cache: 
         return vectors_cache[cache_key]
     fp = faiss_path(user_id, session_id)
     docs = load_documents(user_id)
@@ -359,22 +452,99 @@ def hyde_query(query: str) -> str:
 
 def auto_title(first_message: str) -> str:
     try:
-        title = llm.invoke(
-            f"Crie um título curto (máximo 5 palavras, sem aspas) para uma conversa que começa com:\n{first_message}"
+        title = llm.invoke([
+            {"role":"user","content":f"Crie um título curto (máximo 5 palavras, sem aspas) para uma conversa que começa com:\n{first_message}"}
+        ]
+            
         ).content.strip().strip('"').strip("'")
         return title[:60]
     except Exception:
         return first_message[:40]
 
+
+# ─────────────────────────────────────────────────────────────────
+# Avaliação de chunks recuperados (NDCG / MRR) — modo teste
+# ─────────────────────────────────────────────────────────────────
+def _eval_tokenize(text: str) -> set:
+    normalized = unicodedata.normalize("NFKD", text.lower())
+    normalized = "".join(c for c in normalized if not unicodedata.combining(c))
+    return set(re.findall(r"\b\w{3,}\b", normalized))
+
+
+def _token_overlap_ratio(text_tokens: set, reference_tokens: set) -> float:
+    if not reference_tokens:
+        return 0.0
+    return len(text_tokens & reference_tokens) / len(reference_tokens)
+
+
+def chunk_relevance_score(chunk_text: str, ground_truth: str, query: str = "") -> float:
+    chunk_tokens = _eval_tokenize(chunk_text)
+    gt_score = _token_overlap_ratio(chunk_tokens, _eval_tokenize(ground_truth))
+    query_score = _token_overlap_ratio(chunk_tokens, _eval_tokenize(query))
+    return max(gt_score, query_score)
+
+
+def compute_dcg(relevances: list[float], k: int) -> float:
+    return sum(rel / math.log2(i + 2) for i, rel in enumerate(relevances[:k]))
+
+
+def compute_ndcg(relevances: list[float], k: int) -> float:
+    dcg = compute_dcg(relevances, k)
+    ideal = compute_dcg(sorted(relevances, reverse=True), k)
+    return round(dcg / ideal, 4) if ideal > 0 else 0.0
+
+
+def compute_mrr(relevances: list[float], threshold: float = 0.05) -> float:
+    for i, rel in enumerate(relevances):
+        if rel >= threshold:
+            return round(1.0 / (i + 1), 4)
+    return 0.0
+
+
+def evaluate_retrieved_chunks(docs: list, ground_truth: str, k: int, query: str = "") -> dict:
+    if not docs or not (ground_truth.strip() or query.strip()):
+        return {"k": k, "ndcg": 0.0, "mrr": 0.0, "chunks": []}
+
+    relevances = [chunk_relevance_score(d.page_content, ground_truth, query) for d in docs]
+    effective_k = max(min(k, len(relevances)), 1) if relevances else 0
+    if effective_k == 0:
+        return {"k": 0, "ndcg": 0.0, "mrr": 0.0, "chunks": []}
+
+    return {
+        "k": effective_k,
+        "ndcg": compute_ndcg(relevances, effective_k),
+        "mrr": compute_mrr(relevances),
+        "chunks": [
+            {
+                "rank": i + 1,
+                "filename": d.metadata.get("filename", "?"),
+                "relevance": round(rel, 4),
+                "preview": d.page_content[:200],
+            }
+            for i, (d, rel) in enumerate(zip(docs[:effective_k], relevances[:effective_k]))
+        ],
+    }
+
+
+def build_retrieval_eval(candidate_docs: list, final_docs: list, ground_truth: str, query: str) -> dict:
+    cand_k = max(min(8, len(candidate_docs)), 1) if candidate_docs else 0
+    final_k = max(min(4, len(final_docs)), 1) if final_docs else 0
+    return {
+        "retrieval": evaluate_retrieved_chunks(candidate_docs, ground_truth, k=cand_k, query=query),
+        "final": evaluate_retrieved_chunks(final_docs, ground_truth, k=final_k, query=query),
+    }
+
+
 def build_prompt_and_retrieve(user_input: str, user_id: str, session_id: str, body):
-    """Executa o pipeline RAG completo e retorna (filled_messages, sources, graph_ctx, metrics)."""
+    """Executa o pipeline RAG completo e retorna (filled_messages, sources, graph_ctx, metrics, retrieval_eval)."""
     metrics: dict = {}
+    retrieval_eval = None
 
     vectors = build_or_load_vectors(user_id, session_id)
     graph = build_graph(user_id, session_id) if body.use_graph else nx.DiGraph()
 
     if not vectors:
-        return None, [], "", metrics
+        return None, [], "", metrics, retrieval_eval
 
     with measure(metrics, "hyde"):
         search_q = hyde_query(user_input) if body.use_hyde else user_input
@@ -402,6 +572,11 @@ Pergunta original: {search_q}"""
 
     with measure(metrics, "reranking"):
         final_docs = rerank(user_input, candidate_docs, top_n=4) if body.use_reranking else candidate_docs[:4]
+
+    if TESTE_MODE and getattr(body, "ground_truth", None):
+        retrieval_eval = build_retrieval_eval(
+            candidate_docs, final_docs, body.ground_truth, user_input
+        )
 
     with measure(metrics, "graph"):
         graph_ctx = query_graph(graph, user_input) if body.use_graph else ""
@@ -435,7 +610,7 @@ Resposta:""")
         {"filename": d.metadata.get("filename", "?"), "preview": d.page_content[:200]}
         for d in final_docs
     ]
-    return filled, sources, graph_ctx, metrics
+    return filled, sources, graph_ctx, metrics, retrieval_eval
 
 # ─────────────────────────────────────────────────────────────────
 # Pydantic Models
@@ -453,6 +628,7 @@ class ChatRequest(BaseModel):
     use_multi_query: bool = True
     use_reranking: bool = True
     use_graph: bool = True
+    ground_truth: Optional[str] = None
 
 class ProfileUpdate(BaseModel):
     full_name: Optional[str] = None
@@ -461,51 +637,79 @@ class ProfileUpdate(BaseModel):
 # ENDPOINTS
 # ─────────────────────────────────────────────────────────────────
 
+@app.get("/")
+async def root():
+    return RedirectResponse("/static/login.html")
+
+
+@app.get("/config")
+async def get_config():
+    return {
+        "supabase_url": SUPABASE_URL,
+        "supabase_anon_key": SUPABASE_ANON_KEY,
+        "api_base": os.getenv("API_BASE", "http://localhost:8000"),
+        "teste": TESTE_MODE,
+        "teste_eval": TESTE_MODE,
+    }
+
 # ── Sessões ──────────────────────────────────────────────────────
 @app.get("/sessions")
-async def get_sessions(user_id: str = Depends(get_user_id)):
-    return db_get_sessions(user_id)
+async def get_sessions(auth: AuthContext = Depends(get_auth)):
+    db = db_client_for(auth)
+    return db_get_sessions(db, auth.user_id)
+
 
 @app.post("/sessions")
-async def create_session(body: SessionCreate, user_id: str = Depends(get_user_id)):
-    sid = db_create_session(user_id, body.name)
+async def create_session(body: SessionCreate, auth: AuthContext = Depends(get_auth)):
+    db = db_client_for(auth)
+    sid = db_create_session(db, auth.user_id, body.name)
     return {"id": sid, "name": body.name}
 
+
 @app.patch("/sessions/{session_id}")
-async def rename_session(session_id: str, body: SessionRename, user_id: str = Depends(get_user_id)):
-    db_rename_session(session_id, body.name)
+async def rename_session(session_id: str, body: SessionRename, auth: AuthContext = Depends(get_auth)):
+    db = db_client_for(auth)
+    db_rename_session(db, session_id, auth.user_id, body.name)
     return {"ok": True}
+
 
 @app.delete("/sessions/{session_id}")
-async def delete_session(session_id: str, user_id: str = Depends(get_user_id)):
-    db_delete_session(session_id)
-    vectors_cache.pop((user_id, session_id), None)
-    graph_cache.pop((user_id, session_id), None)
+async def delete_session(session_id: str, auth: AuthContext = Depends(get_auth)):
+    db = db_client_for(auth)
+    db_delete_session(db, session_id, auth.user_id)
+    vectors_cache.pop((auth.user_id, session_id), None)
+    graph_cache.pop((auth.user_id, session_id), None)
     return {"ok": True}
 
+
 @app.get("/sessions/{session_id}/messages")
-async def get_messages(session_id: str, user_id: str = Depends(get_user_id)):
-    return db_load_messages(session_id)
+async def get_messages(session_id: str, auth: AuthContext = Depends(get_auth)):
+    db = db_client_for(auth)
+    return db_load_messages(db, session_id, auth.user_id)
 
 # ── Chat normal (JSON) ────────────────────────────────────────────
 @app.post("/chat")
 @limiter.limit("30/minute")
-async def chat(request: Request, body: ChatRequest, user_id: str = Depends(get_user_id)):
-    db_save_message(body.session_id, "user", body.message)
+async def chat(request: Request, body: ChatRequest, auth: AuthContext = Depends(get_auth)):
+    db = db_client_for(auth)
+    user_id = auth.user_id
+    db_save_message(db, body.session_id, user_id, "user", body.message)
 
-    msgs = db_load_messages(body.session_id)
+    msgs = db_load_messages(db, body.session_id, user_id)
     if len(msgs) == 1:
         title = auto_title(body.message)
-        db_rename_session(body.session_id, title)
+        db_rename_session(db, body.session_id, user_id, title)
 
-    filled, sources, graph_ctx, metrics = build_prompt_and_retrieve(
+    filled, sources, graph_ctx, metrics, retrieval_eval = build_prompt_and_retrieve(
         body.message, user_id, body.session_id, body
     )
 
+#aparentemente aqui eh a parte de avaliacao da resposta
     if filled:
         with measure(metrics, "llm"):
             answer = llm.invoke(filled).content
     else:
+        #por que eu nao avalio e salvo a resposta na memoria?
         mem_key = f"{user_id}_{body.session_id}"
         if mem_key not in memory_cache:
             memory_cache[mem_key] = []
@@ -514,33 +718,38 @@ async def chat(request: Request, body: ChatRequest, user_id: str = Depends(get_u
             answer = llm.invoke(memory_cache[mem_key]).content
         memory_cache[mem_key].append(AIMessage(content=answer))
 
-    db_save_message(body.session_id, "assistant", answer)
-    return {
+    db_save_message(db, body.session_id, user_id, "assistant", answer)
+    response = {
         "answer": answer,
         "sources": sources,
         "graph_context": graph_ctx,
         "metrics": metrics,
         "session_renamed": len(msgs) == 1,
     }
+    if TESTE_MODE and retrieval_eval:
+        response["retrieval_eval"] = retrieval_eval
+    return response
 
 # ── Chat streaming (SSE) ──────────────────────────────────────────
 @app.post("/chat/stream")
 @limiter.limit("30/minute")
-async def chat_stream(request: Request, body: ChatRequest, user_id: str = Depends(get_user_id)):
+async def chat_stream(request: Request, body: ChatRequest, auth: AuthContext = Depends(get_auth)):
     """
     Streaming via Server-Sent Events.
     Formato SSE: cada linha começa com "data: " seguido de JSON.
     Tipos de evento: meta | token | done
     """
-    db_save_message(body.session_id, "user", body.message)
+    db = db_client_for(auth)
+    user_id = auth.user_id
+    db_save_message(db, body.session_id, user_id, "user", body.message)
 
-    msgs = db_load_messages(body.session_id)
+    msgs = db_load_messages(db, body.session_id, user_id)
     new_title = None
     if len(msgs) == 1:
         new_title = auto_title(body.message)
-        db_rename_session(body.session_id, new_title)
+        db_rename_session(db, body.session_id, user_id, new_title)
 
-    filled, sources, graph_ctx, metrics = build_prompt_and_retrieve(
+    filled, sources, graph_ctx, metrics, retrieval_eval = build_prompt_and_retrieve(
         body.message, user_id, body.session_id, body
     )
 
@@ -548,13 +757,16 @@ async def chat_stream(request: Request, body: ChatRequest, user_id: str = Depend
 
     async def generate():
         # 1. Metadados (fontes, grafo, título, métricas do pipeline)
-        meta = json.dumps({
+        meta_payload = {
             "type": "meta",
             "sources": sources,
             "graph_context": graph_ctx,
             "new_title": new_title,
             "metrics": metrics,
-        }, ensure_ascii=False)
+        }
+        if TESTE_MODE and retrieval_eval:
+            meta_payload["retrieval_eval"] = retrieval_eval
+        meta = json.dumps(meta_payload, ensure_ascii=False)
         yield f"data: {meta}\n\n"
 
         # 2. Streaming do LLM token a token
@@ -587,19 +799,20 @@ async def chat_stream(request: Request, body: ChatRequest, user_id: str = Depend
         yield f"data: {json.dumps({'type': 'done', 'llm_ms': llm_ms})}\n\n"
 
         # 4. Persiste resposta completa
-        db_save_message(body.session_id, "assistant", "".join(full_answer))
+        db_save_message(db, body.session_id, user_id, "assistant", "".join(full_answer))
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 # ── Exportar conversa ─────────────────────────────────────────────
 @app.get("/sessions/{session_id}/export")
-async def export_session(session_id: str, fmt: str = "txt", user_id: str = Depends(get_user_id)):
-    msgs = db_load_messages(session_id)
+async def export_session(session_id: str, fmt: str = "txt", auth: AuthContext = Depends(get_auth)):
+    db = db_client_for(auth)
+    msgs = db_load_messages(db, session_id, auth.user_id)
     if not msgs:
         raise HTTPException(status_code=404, detail="Conversa vazia")
 
     try:
-        r = supabase.table("chat_sessions").select("name").eq("id", session_id).limit(1).execute()
+        r = db.table("chat_sessions").select("name").eq("id", session_id).limit(1).execute()
         session_name = r.data[0]["name"] if r.data else "Conversa"
     except Exception:
         session_name = "Conversa"
@@ -630,8 +843,10 @@ async def export_session(session_id: str, fmt: str = "txt", user_id: str = Depen
 async def upload_files(
     request: Request,
     files: List[UploadFile] = File(...),
-    user_id: str = Depends(get_user_id)
+    auth: AuthContext = Depends(get_auth),
 ):
+    db = db_client_for(auth)
+    user_id = auth.user_id
     folder = user_storage_dir(user_id) / "uploads"
     index = load_uploads_index(user_id)
     saved = []
@@ -656,22 +871,25 @@ async def upload_files(
 
         try:
             key = f"{user_id}/{int(time.time())}_{safe_name}"
-            supabase.storage.from_("user_uploads").upload(
+            db.storage.from_("user_uploads").upload(
                 key, content, file_options={"content-type": f.content_type}
             )
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"❌ ERRO AO UPLOAD PARA STORAGE: {e}")
+            
 
     save_uploads_index(user_id, index)
     return {"saved": saved}
 
 @app.get("/uploads")
-async def list_uploads(user_id: str = Depends(get_user_id)):
-    index = load_uploads_index(user_id)
+async def list_uploads(auth: AuthContext = Depends(get_auth)):
+    index = load_uploads_index(auth.user_id)
     return {"files": list(index.keys())}
 
+
 @app.delete("/uploads/{filename}")
-async def delete_upload(filename: str, user_id: str = Depends(get_user_id)):
+async def delete_upload(filename: str, auth: AuthContext = Depends(get_auth)):
+    user_id = auth.user_id
     index = load_uploads_index(user_id)
     safe_name = index.pop(filename, None)
     if safe_name:
@@ -682,44 +900,52 @@ async def delete_upload(filename: str, user_id: str = Depends(get_user_id)):
     return {"ok": True}
 
 @app.post("/rebuild-index")
-async def rebuild_index(session_id: str, user_id: str = Depends(get_user_id)):
-    build_or_load_vectors(user_id, session_id, force=True)
-    build_graph(user_id, session_id, force=True)
+async def rebuild_index(session_id: str, auth: AuthContext = Depends(get_auth)):
+    db = db_client_for(auth)
+    verify_session_owner(db, session_id, auth.user_id)
+    build_or_load_vectors(auth.user_id, session_id, force=True)
+    build_graph(auth.user_id, session_id, force=True)
     return {"ok": True}
 
 # ── Perfil ────────────────────────────────────────────────────────
 @app.get("/profile")
-async def get_profile(user_id: str = Depends(get_user_id)):
+async def get_profile(auth: AuthContext = Depends(get_auth)):
+    db = db_client_for(auth)
     try:
-        r = supabase.table("users_profile").select("*").eq("id", user_id).limit(1).execute()
+        r = db.table("users_profile").select("*").eq("id", auth.user_id).limit(1).execute()
         return r.data[0] if r.data else {}
     except Exception:
         return {}
 
+
 @app.patch("/profile")
-async def update_profile(body: ProfileUpdate, user_id: str = Depends(get_user_id)):
-    payload = {"id": user_id}
+async def update_profile(body: ProfileUpdate, auth: AuthContext = Depends(get_auth)):
+    db = db_client_for(auth)
+    payload = {"id": auth.user_id}
     if body.full_name is not None:
         payload["full_name"] = body.full_name
-    supabase.table("users_profile").upsert(payload).execute()
+    db.table("users_profile").upsert(payload).execute()
     return {"ok": True}
+
 
 @app.post("/profile/avatar")
 async def upload_avatar(
     file: UploadFile = File(...),
-    user_id: str = Depends(get_user_id)
+    auth: AuthContext = Depends(get_auth),
 ):
+    db = db_client_for(auth)
+    user_id = auth.user_id
     content = await file.read()
     if len(content) > 5 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Avatar muito grande (máx 5MB)")
     filename = f"{user_id}_{uuid.uuid4()}{Path(file.filename).suffix}"
     try:
-        supabase.storage.from_("avatars").upload(
+        db.storage.from_("avatars").upload(
             filename, content, file_options={"content-type": file.content_type}
         )
-        url_obj = supabase.storage.from_("avatars").get_public_url(filename)
+        url_obj = db.storage.from_("avatars").get_public_url(filename)
         url = url_obj if isinstance(url_obj, str) else (url_obj.get("publicUrl") or "")
-        supabase.table("users_profile").upsert({"id": user_id, "avatar_url": url}).execute()
+        db.table("users_profile").upsert({"id": user_id, "avatar_url": url}).execute()
         return {"avatar_url": url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
