@@ -154,12 +154,20 @@ def uploads_index_path(user_id: str) -> Path:
 
 def load_uploads_index(user_id: str) -> dict:
     p = uploads_index_path(user_id)
-    if p.exists():
-        return json.loads(p.read_text())
-    return {}
+    if not p.exists():
+        return {}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"uploads_index.json invalido para {user_id}: {e}")
+        return {}
 
 def save_uploads_index(user_id: str, index: dict):
-    uploads_index_path(user_id).write_text(json.dumps(index, ensure_ascii=False))
+    uploads_index_path(user_id).write_text(
+        json.dumps(index, ensure_ascii=False),
+        encoding="utf-8",
+    )
 
 # ─────────────────────────────────────────────────────────────────
 # Autenticação
@@ -411,16 +419,23 @@ def query_graph(G: nx.DiGraph, query: str) -> str:
         return ""
     return "Relações (Knowledge Graph):\n" + "\n".join(relations[:8])
 
+def rank_documents(query: str, docs: list, use_reranking: bool) -> list:
+    """Retorna todos os documentos candidatos em ordem de relevância."""
+    if not docs:
+        return []
+    if use_reranking and RERANKER_AVAILABLE:
+        try:
+            pairs = [(query, d.page_content) for d in docs]
+            scores = reranker_model.predict(pairs)
+            ranked = sorted(zip(scores, docs), reverse=True)
+            return [d for _, d in ranked]
+        except Exception:
+            pass
+    return docs
+
+
 def rerank(query: str, docs: list, top_n: int = 4) -> list:
-    if not RERANKER_AVAILABLE or not docs:
-        return docs[:top_n]
-    try:
-        pairs = [(query, d.page_content) for d in docs]
-        scores = reranker_model.predict(pairs)
-        ranked = sorted(zip(scores, docs), reverse=True)
-        return [d for _, d in ranked[:top_n]]
-    except Exception:
-        return docs[:top_n]
+    return rank_documents(query, docs, use_reranking=True)[:top_n]
 
 def hyde_query(query: str) -> str:
     try:
@@ -442,14 +457,14 @@ def auto_title(first_message: str) -> str:
         return first_message[:40]
 
 def build_prompt_and_retrieve(user_input: str, user_id: str, session_id: str, body):
-    """Executa o pipeline RAG completo e retorna (filled_messages, sources, graph_ctx, metrics)."""
+    """Executa o pipeline RAG completo e retorna (filled_messages, sources, graph_ctx, metrics, ranked_retrieval)."""
     metrics: dict = {}
 
     vectors = build_or_load_vectors(user_id, session_id)
     graph = build_graph(user_id, session_id) if body.use_graph else nx.DiGraph()
 
     if not vectors:
-        return None, [], "", metrics
+        return None, [], "", metrics, []
 
     with measure(metrics, "hyde"):
         search_q = hyde_query(user_input) if body.use_hyde else user_input
@@ -476,7 +491,8 @@ Pergunta original: {search_q}"""
             candidate_docs = vectors.similarity_search(search_q, k=8)
 
     with measure(metrics, "reranking"):
-        final_docs = rerank(user_input, candidate_docs, top_n=4) if body.use_reranking else candidate_docs[:4]
+        ranked_docs = rank_documents(user_input, candidate_docs, body.use_reranking)
+        final_docs = ranked_docs[:4]
 
     with measure(metrics, "graph"):
         graph_ctx = query_graph(graph, user_input) if body.use_graph else ""
@@ -510,7 +526,16 @@ Resposta:""")
         {"filename": d.metadata.get("filename", "?"), "preview": d.page_content[:200]}
         for d in final_docs
     ]
-    return filled, sources, graph_ctx, metrics
+    ranked_retrieval = [
+        {
+            "rank": i + 1,
+            "filename": d.metadata.get("filename", "?"),
+            "text": d.page_content,
+            "preview": d.page_content[:200],
+        }
+        for i, d in enumerate(ranked_docs)
+    ]
+    return filled, sources, graph_ctx, metrics, ranked_retrieval
 
 # ─────────────────────────────────────────────────────────────────
 # Pydantic Models
@@ -597,7 +622,7 @@ async def chat(request: Request, body: ChatRequest, auth: AuthContext = Depends(
         title = auto_title(body.message)
         db_rename_session(db, body.session_id, user_id, title)
 
-    filled, sources, graph_ctx, metrics = build_prompt_and_retrieve(
+    filled, sources, graph_ctx, metrics, ranked_retrieval = build_prompt_and_retrieve(
         body.message, user_id, body.session_id, body
     )
 
@@ -619,6 +644,7 @@ async def chat(request: Request, body: ChatRequest, auth: AuthContext = Depends(
     return {
         "answer": answer,
         "sources": sources,
+        "ranked_retrieval": ranked_retrieval,
         "graph_context": graph_ctx,
         "metrics": metrics,
         "session_renamed": len(msgs) == 1,
@@ -643,7 +669,7 @@ async def chat_stream(request: Request, body: ChatRequest, auth: AuthContext = D
         new_title = auto_title(body.message)
         db_rename_session(db, body.session_id, user_id, new_title)
 
-    filled, sources, graph_ctx, metrics = build_prompt_and_retrieve(
+    filled, sources, graph_ctx, metrics, ranked_retrieval = build_prompt_and_retrieve(
         body.message, user_id, body.session_id, body
     )
 
@@ -654,6 +680,7 @@ async def chat_stream(request: Request, body: ChatRequest, auth: AuthContext = D
         meta = json.dumps({
             "type": "meta",
             "sources": sources,
+            "ranked_retrieval": ranked_retrieval,
             "graph_context": graph_ctx,
             "new_title": new_title,
             "metrics": metrics,
@@ -743,6 +770,8 @@ async def upload_files(
     saved = []
 
     for f in files:
+        if not f.filename:
+            continue
         suffix = Path(f.filename).suffix.lower()
         if suffix not in (".pdf", ".txt"):
             continue
