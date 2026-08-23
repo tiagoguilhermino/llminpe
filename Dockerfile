@@ -24,6 +24,7 @@ COPY main.py .
 COPY frontend/ ./frontend/
 COPY docs/ ./docs/
 
+
 # Cria pastas necessárias
 RUN mkdir -p user_data docs
 
@@ -32,7 +33,7 @@ EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-  CMD curl -f http://localhost:8000/docs || exit 1
+  CMD curl -f http://localhost:8000/config || exit 1
 
 # Inicia o servidor
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

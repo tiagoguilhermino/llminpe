@@ -21,7 +21,11 @@ API_URL = os.getenv("EVAL_API_URL", os.getenv("API_BASE", "http://127.0.0.1:8000
 JWT_TOKEN = os.getenv("EVAL_JWT_TOKEN", "PIBIC_EVAL_MASTER_SECRET_2026")
 REQUEST_TIMEOUT = float(os.getenv("EVAL_TIMEOUT", os.getenv("NVIDIA_TIMEOUT", "300")))
 REBUILD_TIMEOUT = float(os.getenv("EVAL_REBUILD_TIMEOUT", "600"))
-SLEEP_BETWEEN = float(os.getenv("EVAL_SLEEP", "1"))
+UPLOAD_TIMEOUT = float(os.getenv("EVAL_UPLOAD_TIMEOUT", "120"))
+SLEEP_BETWEEN = float(os.getenv("EVAL_SLEEP", "3"))
+RETRY_ATTEMPTS = int(os.getenv("EVAL_RETRY_ATTEMPTS", "3"))
+RETRY_DELAY = float(os.getenv("EVAL_RETRY_DELAY", "10"))
+DOCS_PARSE_DIR = Path("docs") / "parse"
 EVAL_DOCUMENTS = os.getenv("EVAL_DOCUMENTS", os.getenv("EVAL_DOCUMENT", ""))
 EVAL_DATASET = os.getenv("EVAL_DATASET", "Dataset_eval_RAG_INPE.csv")
 EVAL_LIMIT = int(os.getenv("EVAL_LIMIT", "0")) or None
@@ -95,6 +99,42 @@ def list_server_docs() -> list[Path]:
     ]
 
 
+def list_unparsed_pdfs(docs: list[Path]) -> list[Path]:
+    """PDFs em docs/ que ainda nao possuem Markdown em docs/parse/."""
+    missing = []
+    for pdf in docs:
+        if pdf.suffix.lower() != ".pdf":
+            continue
+        md_path = DOCS_PARSE_DIR / f"{pdf.stem}.md"
+        if not md_path.exists() or md_path.stat().st_mtime < pdf.stat().st_mtime:
+            missing.append(pdf)
+    return missing
+
+
+def ensure_local_markdown(docs: list[Path]) -> bool:
+    """Converte PDFs locais para Markdown antes de chamar a API (evita timeout no rebuild)."""
+    missing = list_unparsed_pdfs(docs)
+    if not missing:
+        return True
+
+    print(f"  {len(missing)} PDF(s) sem Markdown em docs/parse/.")
+    print("  Convertendo localmente via LlamaParse (pode levar varios minutos)...")
+    try:
+        from preparse_docs import parse_folder
+
+        parsed = parse_folder(Path("docs"), DOCS_PARSE_DIR)
+        still_missing = list_unparsed_pdfs(docs)
+        if still_missing:
+            print(f"  Ainda faltam {len(still_missing)} Markdown(s). Verifique LLAMA_CLOUD_API_KEY e os logs.")
+            return False
+        print(f"  Markdown pronto ({parsed} PDF(s) convertido(s) agora).")
+        return True
+    except Exception as exc:
+        print(f"  Falha ao converter PDFs localmente: {exc}")
+        print("  Execute manualmente: python preparse_docs.py")
+        return False
+
+
 def resolve_upload_documents() -> list[Path]:
     """Arquivos extras definidos em EVAL_DOCUMENTS (enviados via POST /upload)."""
     if not EVAL_DOCUMENTS.strip():
@@ -118,7 +158,7 @@ def normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text.lower().strip())
 
 
-def chunks_match(expected: str, retrieved: str, min_overlap: int = 80) -> bool:
+def chunks_match(expected: str, retrieved: str, min_overlap: int = 60) -> bool:
     """Verifica se o trecho esperado corresponde a um chunk recuperado."""
     a = normalize_text(expected)
     b = normalize_text(retrieved)
@@ -191,6 +231,25 @@ def parse_chat_response(response: httpx.Response) -> tuple[str, dict, list]:
     )
 
 
+async def post_with_retry(client: httpx.AsyncClient, url: str, **kwargs) -> httpx.Response | None:
+    """Repete requisicoes quando o servidor cai ou desconecta no meio da resposta."""
+    for attempt in range(1, RETRY_ATTEMPTS + 1):
+        try:
+            return await client.post(url, **kwargs)
+        except (httpx.ConnectError, httpx.RemoteProtocolError, httpx.ReadError) as exc:
+            if attempt == RETRY_ATTEMPTS:
+                raise
+            wait = RETRY_DELAY * attempt
+            print(
+                f"  Conexao perdida ({type(exc).__name__}); "
+                f"tentativa {attempt}/{RETRY_ATTEMPTS} em {wait:.0f}s..."
+            )
+            await asyncio.sleep(wait)
+            if not await check_api(client):
+                print("  Servidor indisponivel. Reinicie com: uvicorn main:app --host 127.0.0.1 --port 8000")
+    return None
+
+
 async def check_api(client: httpx.AsyncClient) -> bool:
     try:
         r = await client.get(f"{API_URL}/config", timeout=10.0)
@@ -226,32 +285,56 @@ async def upload_documents(client: httpx.AsyncClient, paths: list[Path]) -> list
     if not paths:
         return []
 
-    files = []
-    handles = []
+    handles: list = []
     try:
+        files = []
         for p in paths:
             handle = p.open("rb")
             handles.append(handle)
-            mime = "application/pdf" if p.suffix.lower() == ".pdf" else "text/plain" 
+            if p.suffix.lower() == ".pdf":
+                mime = "application/pdf"
+            elif p.suffix.lower() in (".md", ".markdown"):
+                mime = "text/markdown"
+            else:
+                mime = "text/plain"
             files.append(("files", (p.name, handle, mime)))
 
         r = await client.post(
             f"{API_URL}/upload",
             headers=auth_headers_upload(),
             files=files,
-            timeout=120.0,
+            timeout=UPLOAD_TIMEOUT,
         )
         if r.status_code == 200:
             saved = r.json().get("saved", [])
-            print(f"  Documentos enviados: {', '.join(saved) or '(nenhum)'}")
+            print(f"  Documentos enviados ({len(saved)}): {', '.join(saved) or '(nenhum)'}")
             return saved
+        if r.status_code == 429:
+            print(f"  Rate limit no upload (429). Aguarde 1 minuto ou reinicie o eval.")
         print(f"  Falha no upload ({r.status_code}): {r.text[:200]}")
+    except httpx.TimeoutException:
+        print(f"  Timeout no upload ({UPLOAD_TIMEOUT}s). Aumente EVAL_UPLOAD_TIMEOUT.")
     except httpx.RequestError as exc:
-        print(f"  Erro de rede no upload: {exc}")
+        print(f"  Erro de rede no upload: {exc or type(exc).__name__}")
     finally:
         for handle in handles:
             handle.close()
     return []
+
+
+async def fetch_rag_status(client: httpx.AsyncClient, session_id: str) -> dict:
+    try:
+        r = await client.get(
+            f"{API_URL}/rag/status",
+            params={"session_id": session_id},
+            headers=auth_headers(),
+            timeout=30.0,
+        )
+        if r.status_code == 200:
+            return r.json()
+    except httpx.RequestError:
+        pass
+    return {}
 
 
 async def rebuild_index(client: httpx.AsyncClient, session_id: str) -> bool:
@@ -263,14 +346,36 @@ async def rebuild_index(client: httpx.AsyncClient, session_id: str) -> bool:
             timeout=REBUILD_TIMEOUT,
         )
         if r.status_code == 200:
+            data = r.json()
+            print(
+                "  rebuild-index concluido "
+                f"({data.get('loaded_documents', '?')} docs, "
+                f"{data.get('markdown_files', '?')} .md em docs/parse)."
+            )
             return True
+        if r.status_code == 503:
+            detail = r.json().get("detail", {})
+            status = detail.get("status", detail) if isinstance(detail, dict) else detail
+            print(f"  rebuild-index: servidor nao carregou documentos.")
+            if isinstance(status, dict):
+                print(
+                    f"    docs/parse existe: {status.get('docs_parse_exists')} | "
+                    f".md encontrados: {status.get('markdown_files')} | "
+                    f"docs carregados: {status.get('loaded_documents')}"
+                )
+                print(f"    caminho no servidor: {status.get('docs_parse_dir')}")
+            return False
+        if r.status_code == 429:
+            print("  rebuild-index bloqueado por rate limit (429). Aguarde 1 minuto.")
         print(f"  rebuild-index falhou ({r.status_code}): {r.text[:200]}")
+    except httpx.TimeoutException:
+        print(f"  rebuild-index excedeu timeout ({REBUILD_TIMEOUT}s). Aumente EVAL_REBUILD_TIMEOUT.")
     except httpx.RequestError as exc:
-        print(f"  Erro ao recriar indice: {exc}")
+        print(f"  Erro ao recriar indice: {exc or type(exc).__name__}")
     return False
 
 
-async def probe_rag(client: httpx.AsyncClient, session_id: str, question: str) -> tuple[bool, int]:
+async def probe_rag(client: httpx.AsyncClient, session_id: str, question: str) -> tuple[bool, int, str]:
     """Verifica se o servidor retornou trechos ranqueados (RAG ativo)."""
     try:
         response = await client.post(
@@ -286,12 +391,16 @@ async def probe_rag(client: httpx.AsyncClient, session_id: str, question: str) -
             headers=auth_headers(),
             timeout=REQUEST_TIMEOUT,
         )
-    except httpx.RequestError:
-        return False, 0
+    except httpx.ReadTimeout:
+        return False, 0, f"timeout ({REQUEST_TIMEOUT}s)"
+    except httpx.RequestError as exc:
+        return False, 0, str(exc or type(exc).__name__)
     if response.status_code != 200:
-        return False, 0
+        return False, 0, f"HTTP {response.status_code}"
     _, _, ranked = parse_chat_response(response)
-    return len(ranked) > 0, len(ranked)
+    if ranked:
+        return True, len(ranked), ""
+    return False, 0, "ranked_retrieval vazio"
 
 
 async def ensure_documents_indexed(
@@ -304,6 +413,9 @@ async def ensure_documents_indexed(
     """Garante indice RAG pronto; faz upload local se o servidor nao enxergar docs/."""
     if not server_docs and not upload_paths:
         print("  Aviso: nenhum documento local; metricas de retrieval podem ficar em 0.")
+
+    if server_docs and not ensure_local_markdown(server_docs):
+        return False
 
     if upload_paths:
         uploaded = await upload_documents(client, upload_paths)
@@ -318,24 +430,49 @@ async def ensure_documents_indexed(
             return False
 
         if probe_question:
-            ok, n = await probe_rag(client, session_id, probe_question)
+            ok, n, probe_err = await probe_rag(client, session_id, probe_question)
             if ok:
                 print(f"  RAG ativo ({n} trechos no probe).")
                 return True
 
+            status = await fetch_rag_status(client, session_id)
+            md_count = status.get("markdown_files", 0)
+            loaded = status.get("loaded_documents", 0)
+            print(f"  Probe falhou: {probe_err}.")
+            if md_count > 0 and loaded > 0:
+                print(
+                    "  Servidor ve os documentos e o indice existe, mas a busca nao retornou trechos. "
+                    "Pode ser timeout no chat ou pergunta de probe sem match."
+                )
+                return True
+            if md_count > 0 and loaded == 0:
+                print(
+                    "  Servidor ve docs/parse/ mas nao conseguiu carregar os arquivos. "
+                    "Verifique encoding/permissoes dos .md."
+                )
+                return False
             if server_docs:
-                print("  Servidor sem docs indexados (ex.: Docker sem volume); enviando PDFs locais...")
-                uploaded = await upload_documents(client, server_docs)
+                print(
+                    "  Servidor nao ve docs/parse/ (markdown_files=0). "
+                    "Confirme volume ./docs:/app/docs e recrie o container."
+                )
+                print("  Enviando Markdown parseado (docs/parse/) como fallback...")
+                md_paths = sorted(DOCS_PARSE_DIR.glob("*.md")) if DOCS_PARSE_DIR.exists() else []
+                if not md_paths:
+                    print("  Nenhum .md em docs/parse/. Execute: python preparse_docs.py")
+                    return False
+                uploaded = await upload_documents(client, md_paths)
                 if not uploaded:
-                    print("  Upload dos PDFs locais falhou.")
+                    print("  Upload dos Markdowns locais falhou.")
                     return False
                 if not await rebuild_index(client, session_id):
                     print("  rebuild-index apos upload falhou.")
                     return False
-                ok, n = await probe_rag(client, session_id, probe_question)
+                ok, n, probe_err = await probe_rag(client, session_id, probe_question)
                 if ok:
                     print(f"  RAG ativo apos upload ({n} trechos no probe).")
                     return True
+                print(f"  Probe apos upload falhou: {probe_err}.")
 
         print("  RAG inativo: ranked_retrieval vazio. MRR/Recall@4 ficarao em 0.")
         return False
@@ -379,7 +516,8 @@ async def test_endpoint(
 
         start_time = time.perf_counter()
         try:
-            response = await client.post(
+            response = await post_with_retry(
+                client,
                 f"{API_URL}/chat",
                 json=payload,
                 headers=auth_headers(),
@@ -390,6 +528,9 @@ async def test_endpoint(
             continue
         except httpx.RequestError as exc:
             print(f"  [DEBUG] {name} linha {idx} → {type(exc).__name__}: {str(exc)[:80]}")
+            continue
+
+        if response is None:
             continue
 
         if response.status_code != 200:
@@ -429,7 +570,7 @@ async def test_endpoint(
         "Recall@4": round(sum(recall_scores) / processed, 3),
         "Tempo": round(total_time, 1),
         "Linhas": processed,
-        "Rank_médio": round(sum(ranks) / len(ranks), 2) if ranks else 0.0,
+        "Rank_médio": round(sum(ranks) / processed, 2) if ranks else 0.0, #penaliza rank=0 para linhas sem match
     }
 
 

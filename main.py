@@ -29,13 +29,14 @@ from slowapi.errors import RateLimitExceeded
 
 # LangChain
 from langchain_nvidia_ai_endpoints import ChatNVIDIA, NVIDIAEmbeddings
-from langchain_community.document_loaders import PyPDFLoader, TextLoader
+from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage, AIMessage
 
 import networkx as nx
+from llama_cloud import LlamaCloud
 
 # ─────────────────────────────────────────────────────────────────
 # Imports opcionais com fallback gracioso
@@ -49,7 +50,7 @@ except Exception:
 
 try:
     from sentence_transformers import CrossEncoder
-    reranker_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+    reranker_model = CrossEncoder("bert-base-portuguese-cased")
     RERANKER_AVAILABLE = True
 except Exception:
     RERANKER_AVAILABLE = False
@@ -94,6 +95,7 @@ admin_client: Optional[Client] = (
 # App + Rate Limiting
 # ─────────────────────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address)
+UPLOAD_RATE_LIMIT = os.getenv("UPLOAD_RATE_LIMIT", "60/minute")
 
 IS_PROD = os.getenv("ENV", "dev") == "prod"
 app = FastAPI(
@@ -124,7 +126,7 @@ NVIDIA_TIMEOUT = int(os.getenv("NVIDIA_TIMEOUT", "300"))
 llm = ChatNVIDIA(
     model=NVIDIA_MODEL,
     api_key=nvidia_key,
-    temperature=1.00,
+    temperature=0.5,
     max_completion_tokens=16384,
     timeout=NVIDIA_TIMEOUT,
 )
@@ -141,6 +143,7 @@ def user_storage_dir(user_id: str) -> Path:
     base = Path("user_data") / user_id
     base.mkdir(parents=True, exist_ok=True)
     (base / "uploads").mkdir(exist_ok=True)
+    (base / "parse").mkdir(exist_ok=True)
     return base
 
 def faiss_path(user_id: str, session_id: str) -> Path:
@@ -285,6 +288,66 @@ def db_save_message(db: Client, session_id: str, user_id: str, role: str, conten
     except Exception as e:
         print(f"❌ ERRO AO SALVAR MENSAGEM NO BANCO: {e}")
 
+# ─────────────────────────────────────────────────────────────────
+# Parsing
+# ─────────────────────────────────────────────────────────────────
+DOCS_PARSE_DIR = Path("docs") / "parse"
+SUPPORTED_DOC_SUFFIXES = {".pdf", ".txt", ".md", ".markdown"}
+
+
+def parse_folder(source_dir: Path, output_dir: Path) -> Path:
+    """Converte PDFs de source_dir em Markdown em output_dir via LlamaParse."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if not source_dir.exists():
+        return output_dir
+
+    api_key = os.environ.get("LLAMA_CLOUD_API_KEY")
+    if not api_key:
+        print("LLAMA_CLOUD_API_KEY nao configurada; ignorando parse de PDFs")
+        return output_dir
+
+    client = LlamaCloud(api_key=api_key)
+    for pdf in source_dir.iterdir():
+        if not pdf.is_file() or pdf.suffix.lower() != ".pdf":
+            continue
+        md_path = output_dir / f"{pdf.stem}.md"
+        if md_path.exists() and md_path.stat().st_mtime >= pdf.stat().st_mtime:
+            continue
+        try:
+            arquivo = client.files.create(file=pdf, purpose="parse")
+            result = client.parsing.parse(
+                file_id=arquivo.id,
+                tier="agentic",
+                version="latest",
+                expand=["markdown_full"],
+            )
+            md_path.write_text(result.markdown_full or "", encoding="utf-8")
+            print(f"Parse concluido: {pdf.name} -> {md_path.name}")
+        except Exception as e:
+            print(f"Erro ao parsear {pdf.name}: {e}")
+    return output_dir
+
+
+def has_unparsed_pdfs(source_dir: Path, output_dir: Path) -> bool:
+    if not source_dir.exists():
+        return False
+    for pdf in source_dir.iterdir():
+        if not pdf.is_file() or pdf.suffix.lower() != ".pdf":
+            continue
+        md_path = output_dir / f"{pdf.stem}.md"
+        if not md_path.exists() or md_path.stat().st_mtime < pdf.stat().st_mtime:
+            return True
+    return False
+
+
+def ensure_documents_parsed(user_id: str):
+    """Parseia PDFs novos ou alterados antes de indexar."""
+    user_base = user_storage_dir(user_id)
+    if has_unparsed_pdfs(Path("docs"), DOCS_PARSE_DIR):
+        parse_folder(Path("docs"), DOCS_PARSE_DIR)
+    if has_unparsed_pdfs(user_base / "uploads", user_base / "parse"):
+        parse_folder(user_base / "uploads", user_base / "parse")
+
 
 # ─────────────────────────────────────────────────────────────────
 # RAG
@@ -294,26 +357,36 @@ def load_documents(user_id: str):
     index = load_uploads_index(user_id)
     safe_to_original = {v: k for k, v in index.items()}
 
-    for folder in [Path("docs"), user_storage_dir(user_id) / "uploads"]:
+    def resolve_filename(path: Path) -> str:
+        if path.suffix.lower() == ".md":
+            original = safe_to_original.get(f"{path.stem}.pdf")
+            if original:
+                return original
+        return safe_to_original.get(path.name, path.name)
+
+    for folder in [
+        DOCS_PARSE_DIR,
+        Path("docs"),
+        user_storage_dir(user_id) / "parse",
+        user_storage_dir(user_id) / "uploads",
+    ]:
         if not folder.exists():
             continue
         for f in folder.iterdir():
             if not f.is_file():
                 continue
+            suffix = f.suffix.lower()
+            if suffix not in SUPPORTED_DOC_SUFFIXES or suffix == ".pdf":
+                continue
             try:
-                if f.suffix.lower() == ".pdf":
-                    loader = PyPDFLoader(str(f))
-                elif f.suffix.lower() == ".txt":
-                    loader = TextLoader(str(f), encoding="utf-8")
-                else:
-                    continue
+                loader = TextLoader(str(f), encoding="utf-8")
                 loaded = loader.load()
-                display_name = safe_to_original.get(f.name, f.name)
+                display_name = resolve_filename(f)
                 for d in loaded:
                     d.metadata["filename"] = display_name
                 docs.extend(loaded)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Erro ao carregar {f}: {e}")
     return docs
 
 def should_rebuild(user_id: str, session_id: str) -> bool:
@@ -321,24 +394,45 @@ def should_rebuild(user_id: str, session_id: str) -> bool:
     if not fp.exists():
         return True
     index_mtime = fp.stat().st_mtime
-    for folder in [Path("docs"), user_storage_dir(user_id) / "uploads"]:
+    watch_dirs = [
+        Path("docs"),
+        DOCS_PARSE_DIR,
+        user_storage_dir(user_id) / "uploads",
+        user_storage_dir(user_id) / "parse",
+    ]
+    for folder in watch_dirs:
         if not folder.exists():
             continue
         for f in folder.iterdir():
-            if f.is_file() and f.stat().st_mtime > index_mtime:
-                return True
+            if f.is_file() and f.suffix.lower() in SUPPORTED_DOC_SUFFIXES:
+                if f.stat().st_mtime > index_mtime:
+                    return True
     return False
+
+def count_markdown_files() -> int:
+    if not DOCS_PARSE_DIR.exists():
+        return 0
+    return sum(1 for f in DOCS_PARSE_DIR.iterdir() if f.is_file() and f.suffix.lower() == ".md")
+
+
+def get_rag_status(user_id: str, session_id: str) -> dict:
+    docs = load_documents(user_id)
+    fp = faiss_path(user_id, session_id)
+    cache_key = (user_id, session_id)
+    return {
+        "docs_parse_dir": str(DOCS_PARSE_DIR.resolve()),
+        "docs_parse_exists": DOCS_PARSE_DIR.exists(),
+        "markdown_files": count_markdown_files(),
+        "loaded_documents": len(docs),
+        "faiss_index_exists": fp.exists(),
+        "vectors_in_memory": cache_key in vectors_cache,
+    }
 
 def build_or_load_vectors(user_id: str, session_id: str, force: bool = False):
     cache_key = (user_id, session_id)
     if not force and cache_key in vectors_cache:
         return vectors_cache[cache_key]
     fp = faiss_path(user_id, session_id)
-    docs = load_documents(user_id)
-    if not docs:
-        return None
-    splitter = RecursiveCharacterTextSplitter(chunk_size=400, chunk_overlap=50)
-    chunks = splitter.split_documents(docs)
     if not force and fp.exists() and not should_rebuild(user_id, session_id):
         try:
             v = FAISS.load_local(str(fp), emb, allow_dangerous_deserialization=True)
@@ -346,6 +440,12 @@ def build_or_load_vectors(user_id: str, session_id: str, force: bool = False):
             return v
         except Exception:
             pass
+    ensure_documents_parsed(user_id)
+    docs = load_documents(user_id)
+    if not docs:
+        return None
+    splitter = RecursiveCharacterTextSplitter(chunk_size=400, chunk_overlap=50)
+    chunks = splitter.split_documents(docs)
     v = FAISS.from_documents(chunks, emb)
     v.save_local(str(fp))
     vectors_cache[cache_key] = v
@@ -373,6 +473,10 @@ def build_graph(user_id: str, session_id: str, force: bool = False) -> nx.DiGrap
             return g
         except Exception:
             pass
+    if has_unparsed_pdfs(Path("docs"), DOCS_PARSE_DIR) or has_unparsed_pdfs(
+        user_storage_dir(user_id) / "uploads", user_storage_dir(user_id) / "parse"
+    ):
+        ensure_documents_parsed(user_id)
     docs = load_documents(user_id)
     splitter = RecursiveCharacterTextSplitter(chunk_size=400, chunk_overlap=50)
     chunks = splitter.split_documents(docs)
@@ -757,7 +861,7 @@ async def export_session(session_id: str, fmt: str = "txt", auth: AuthContext = 
 
 # ── Uploads ───────────────────────────────────────────────────────
 @app.post("/upload")
-@limiter.limit("20/minute")
+@limiter.limit(UPLOAD_RATE_LIMIT)
 async def upload_files(
     request: Request,
     files: List[UploadFile] = File(...),
@@ -765,7 +869,8 @@ async def upload_files(
 ):
     db = db_client_for(auth)
     user_id = auth.user_id
-    folder = user_storage_dir(user_id) / "uploads"
+    folder_uploads = user_storage_dir(user_id) / "uploads"
+    folder_parse = user_storage_dir(user_id) / "parse"
     index = load_uploads_index(user_id)
     saved = []
 
@@ -773,7 +878,7 @@ async def upload_files(
         if not f.filename:
             continue
         suffix = Path(f.filename).suffix.lower()
-        if suffix not in (".pdf", ".txt"):
+        if suffix not in (".pdf", ".txt",".md",".markdown"):
             continue
 
         content = await f.read()
@@ -782,21 +887,31 @@ async def upload_files(
             continue
 
         safe_name = f"{uuid.uuid4()}{suffix}"
-        dest = folder / safe_name
-        with open(dest, "wb") as g:
-            g.write(content)
+        
+        if suffix in (".pdf", ".txt"):
+            dest = folder_uploads / safe_name
+            with open(dest, "wb") as g:
+                g.write(content)
+        elif suffix in (".md", ".markdown"):
+            dest = folder_parse / safe_name
+            with open(dest, "wb") as g:
+                g.write(content)
 
         index[f.filename] = safe_name
         saved.append(f.filename)
 
         try:
             key = f"{user_id}/{int(time.time())}_{safe_name}"
-            db.storage.from_("user_uploads").upload(
-                key, content, file_options={"content-type": f.content_type}
-            )
+            if suffix in (".pdf", ".txt"):
+                db.storage.from_("user_uploads").upload(
+                    key, content, file_options={"content-type": f.content_type}
+                )
+            elif suffix in (".md", ".markdown"):
+                db.storage.from_("users_parse").upload(
+                    key, content, file_options={"content-type": f.content_type}
+                )
         except Exception as e:
             print(f"❌ ERRO AO UPLOAD PARA STORAGE: {e}")
-            
 
     save_uploads_index(user_id, index)
     return {"saved": saved}
@@ -823,9 +938,26 @@ async def delete_upload(filename: str, auth: AuthContext = Depends(get_auth)):
 async def rebuild_index(session_id: str, auth: AuthContext = Depends(get_auth)):
     db = db_client_for(auth)
     verify_session_owner(db, session_id, auth.user_id)
-    build_or_load_vectors(auth.user_id, session_id, force=True)
-    build_graph(auth.user_id, session_id, force=True)
-    return {"ok": True}
+    user_id = auth.user_id
+    vectors = build_or_load_vectors(user_id, session_id, force=True)
+    build_graph(user_id, session_id, force=True)
+    status = get_rag_status(user_id, session_id)
+    if vectors is None or status["loaded_documents"] == 0:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "Nenhum documento carregado para indexacao",
+                "status": status,
+            },
+        )
+    return {"ok": True, **status}
+
+
+@app.get("/rag/status")
+async def rag_status(session_id: str, auth: AuthContext = Depends(get_auth)):
+    db = db_client_for(auth)
+    verify_session_owner(db, session_id, auth.user_id)
+    return get_rag_status(auth.user_id, session_id)
 
 # ── Perfil ────────────────────────────────────────────────────────
 @app.get("/profile")
