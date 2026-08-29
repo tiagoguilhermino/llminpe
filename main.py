@@ -130,7 +130,10 @@ llm = ChatNVIDIA(
     max_completion_tokens=16384,
     timeout=NVIDIA_TIMEOUT,
 )
-emb = NVIDIAEmbeddings()
+emb = NVIDIAEmbeddings(
+    model=os.getenv("NVIDIA_EMBEDDING_MODEL", "nvidia/nv-embedqa-e5-v5"),
+    api_key=nvidia_key,
+)
 
 memory_cache: dict = {}
 vectors_cache: dict = {}
