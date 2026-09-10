@@ -130,6 +130,18 @@ def evaluate_configuration(name: str, options: RagOptions, dataset: list[dict]) 
                     "recall_at_4": round(recall, 6),
                     "metrics": result["metrics"],
                     "sources": result["sources"],
+                    "chunks": [
+                        {
+                            "tecnica": name,
+                            "posicao": item.get("posicao", item.get("rank")),
+                            "origem": item.get("origem", "faiss"),
+                            "posicao_busca": item.get("posicao_busca"),
+                            "filename": item.get("filename", "?"),
+                            "text": item.get("text", ""),
+                            "preview": item.get("preview", ""),
+                        }
+                        for item in ranked
+                    ],
                 })
                 elapsed = time.perf_counter() - question_started
                 print(f"  OK {name} linha {number}/{len(dataset)} - {elapsed:.1f}s | faith={faith:.3f} mrr={mrr:.3f} r@4={recall:.3f} rank={rank or '-'}")

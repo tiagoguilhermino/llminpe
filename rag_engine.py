@@ -1,19 +1,22 @@
 import json
 import os
 import pickle
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+
 import networkx as nx
 from dotenv import load_dotenv
 from langchain_community.document_loaders import TextLoader
 from langchain_community.vectorstores import FAISS
+from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_nvidia_ai_endpoints import ChatNVIDIA, NVIDIAEmbeddings
 from langchain_openai import OpenAIEmbeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter, MarkdownHeaderTextSplitter
 from llama_cloud import LlamaCloud
 
 ENV_FILE = Path(__file__).resolve().parent / ".env"
@@ -187,6 +190,253 @@ def _documents():
             documents.extend(loaded)
     return documents
 
+_CHUNK_SIZE = 1200
+_CHUNK_OVERLAP = 150
+_MIN_CHUNK_CHARS = 80
+_HEADER_KEYS = ("h1", "h2", "h3")
+_KEEP_WHOLE_TITLES = re.compile(
+    r"^(abstract|plain language summary|resumo)\b",
+    re.IGNORECASE,
+)
+_SKIP_SECTION_TITLES = re.compile(
+    r"^(references|bibliography|referências|bibliografia)\b",
+    re.IGNORECASE,
+)
+_SPECIAL_TITLES = (
+    "Abstract",
+    "Plain Language Summary",
+    "Resumo",
+)
+_SPECIAL_TITLE_ALT = "|".join(re.escape(title) for title in _SPECIAL_TITLES)
+_SPECIAL_HEADING_RE = re.compile(
+    rf"^(?:(?P<hashes>\#{{1,3}})\s+|\*\*)(?P<title>{_SPECIAL_TITLE_ALT})(?:\*\*)?[ \t]*",
+    re.IGNORECASE | re.MULTILINE,
+)
+_SPECIAL_BOUNDARY_RE = re.compile(
+    rf"^(?:\#{{1,3}}\s+\S|\*\*(?:{_SPECIAL_TITLE_ALT}|Keywords|Index Terms)\*\*)",
+    re.IGNORECASE | re.MULTILINE,
+)
+_REFERENCE_HEADING_RE = re.compile(
+    r"^(#{1,3}\s+|\*\*)(References|Bibliography|Referências|Bibliografia)(\*\*)?\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_APPENDIX_HEADING_RE = re.compile(
+    r"^(#{1,3}\s+)(appendix|supplementary|supporting information)\b",
+    re.IGNORECASE | re.MULTILINE,
+)
+_ATOMIC_BLOCK_RE = re.compile(
+    r"(```[\s\S]*?```|\$\$[\s\S]*?\$\$|<table\b[\s\S]*?</table>|(?:^[ \t]*\|.+\|[ \t]*(?:\n|$))+)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _collapse_blank_lines(text: str) -> str:
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+def _clean_llamaparse_artifacts(text: str) -> str:
+    cleaned = text
+    cleaned = re.sub(r"(?im)^.*Downloaded from https?://\S+.*$", "", cleaned)
+    cleaned = re.sub(r"(?m)^\s*---\s*$", "", cleaned)
+    cleaned = re.sub(r"(?m)^\d+\s+of\s+\d+\s*$", "", cleaned)
+    cleaned = re.sub(r"(?m)^\d{1,3}(?:,\d{3})+\s*$", "", cleaned)
+    cleaned = re.sub(r"(?m)^\d{5,6}\s*$", "", cleaned)
+    cleaned = re.sub(r"(?im)^Check for updates(?: icon)?\s*$", "", cleaned)
+    cleaned = re.sub(
+        r"(?m)^[A-Z][A-Z’'\-]+(?:\s+[A-Z][A-Z’'\-]+){0,5}\s+ET AL\.\s*$",
+        "",
+        cleaned,
+    )
+    cleaned = re.sub(r"(?m)^.+ et al\.:.+$", "", cleaned)
+    cleaned = re.sub(r"(?im)^©\s*\d{4}\b.*$", "", cleaned)
+    cleaned = re.sub(r"(?im)^This is an open access article.*$", "", cleaned)
+    cleaned = re.sub(r"(?im)^.*\bAll Rights Reserved\.?\s*$", "", cleaned)
+    cleaned = re.sub(r"(?m)^10\.\d{4,}/\S+\s*$", "", cleaned)
+    cleaned = re.sub(r"(?im)^VOLUME \d+,\s*\d{4}\s*$", "", cleaned)
+    cleaned = re.sub(r"(?im)^The associate editor coordinating.*$", "", cleaned)
+    cleaned = re.sub(r"(?im)^.*\blogo\s*$", "", cleaned)
+    cleaned = re.sub(r"(?im)^Digital Object Identifier\s+\S+\s*$", "", cleaned)
+    return _drop_repeated_running_headers(_collapse_blank_lines(cleaned))
+
+
+def _drop_repeated_running_headers(text: str) -> str:
+    seen: set[tuple[str, str]] = set()
+    kept: list[str] = []
+    for line in text.splitlines():
+        match = re.match(r"^(#{1,3})\s+(.+?)\s*$", line)
+        if match:
+            level, title = match.group(1), match.group(2).strip()
+            key = (level, title.casefold())
+            numbered = bool(re.match(r"^\d", title))
+            if level == "#" and not numbered and key in seen:
+                continue
+            seen.add(key)
+        kept.append(line)
+    return "\n".join(kept)
+
+
+def _normalize_section_title(title: str) -> str:
+    stripped = re.sub(r"^#+\s*", "", title).strip()
+    if _KEEP_WHOLE_TITLES.match(stripped):
+        return stripped.title()
+    return stripped
+
+
+def _extract_labeled_sections(text: str) -> tuple[list[tuple[str, str]], str]:
+    spans: list[tuple[int, int, str]] = []
+    for match in _SPECIAL_HEADING_RE.finditer(text):
+        body_start = match.end()
+        boundary = _SPECIAL_BOUNDARY_RE.search(text, body_start)
+        end = boundary.start() if boundary else len(text)
+        if end <= body_start:
+            continue
+        spans.append((match.start(), end, match.group("title")))
+
+    extracted: list[tuple[str, str]] = []
+    remaining = text
+    for start, end, title in sorted(spans, reverse=True):
+        body = text[start:end]
+        remaining = remaining[:start] + remaining[end:]
+        extracted.append((_normalize_section_title(title), body.strip()))
+    extracted.reverse()
+    return extracted, _collapse_blank_lines(remaining)
+
+
+def _drop_reference_sections(text: str) -> str:
+    matches = list(_REFERENCE_HEADING_RE.finditer(text))
+    if not matches:
+        return text
+    start = matches[-1].start()
+    tail = text[start:]
+    appendix = _APPENDIX_HEADING_RE.search(tail)
+    if appendix and appendix.start() > 0:
+        return _collapse_blank_lines(text[:start] + tail[appendix.start():])
+    return _collapse_blank_lines(text[:start])
+
+
+def _heading_values(metadata: dict[str, Any]) -> list[str]:
+    values = []
+    for key in _HEADER_KEYS:
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            values.append(_normalize_section_title(value))
+    return values
+
+
+def _section_path(metadata: dict[str, Any]) -> str:
+    return " > ".join(_heading_values(metadata))
+
+
+def _matches_heading(metadata: dict[str, Any], pattern: re.Pattern[str]) -> bool:
+    return any(pattern.search(value) for value in _heading_values(metadata))
+
+
+def _prefix_section(text: str, path: str) -> str:
+    if not path:
+        return text
+    marker = f"[{path}]"
+    if text.startswith(marker):
+        return text
+    return f"{marker}\n{text}"
+
+
+def _is_keepable_chunk(text: str) -> bool:
+    if _is_atomic_block(text) or "```" in text or "$$" in text or "<table" in text.lower():
+        return True
+    body = re.sub(r"^\[.*?\]\n", "", text, count=1).strip()
+    return len(body) >= _MIN_CHUNK_CHARS
+
+
+def _is_atomic_block(text: str) -> bool:
+    stripped = text.lstrip()
+    return (
+        stripped.startswith("```")
+        or stripped.startswith("$$")
+        or stripped.lower().startswith("<table")
+        or stripped.startswith("|")
+    )
+
+
+def _split_preserving_atomic_blocks(text: str, splitter: RecursiveCharacterTextSplitter) -> list[str]:
+    if not text.strip():
+        return []
+    parts = _ATOMIC_BLOCK_RE.split(text)
+    chunks: list[str] = []
+    prose_parts: list[str] = []
+
+    def flush_prose() -> None:
+        joined = "".join(prose_parts).strip()
+        prose_parts.clear()
+        if joined:
+            chunks.extend(splitter.split_text(joined))
+
+    for part in parts:
+        if not part:
+            continue
+        if _is_atomic_block(part):
+            flush_prose()
+            block = part.strip()
+            if chunks and len(chunks[-1]) + len(block) + 2 <= _CHUNK_SIZE:
+                chunks[-1] = f"{chunks[-1]}\n\n{block}"
+            else:
+                chunks.append(block)
+        else:
+            prose_parts.append(part)
+    flush_prose()
+    return [chunk for chunk in chunks if chunk.strip()]
+
+
+def split_markdown_documents(documents):
+    header_splitter = MarkdownHeaderTextSplitter(
+        headers_to_split_on=[
+            ("#", "h1"),
+            ("##", "h2"),
+            ("###", "h3"),
+        ],
+        strip_headers=True,
+    )
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=_CHUNK_SIZE,
+        chunk_overlap=_CHUNK_OVERLAP,
+        separators=["\n\n", "\n", " ", ""],
+        keep_separator=True,
+    )
+
+    chunks: list[Document] = []
+    for document in documents:
+        cleaned = _clean_llamaparse_artifacts(document.page_content)
+        special_sections, remaining = _extract_labeled_sections(cleaned)
+        remaining = _drop_reference_sections(remaining)
+
+        for title, body in special_sections:
+            if not body:
+                continue
+            special_metadata = {**document.metadata, "h1": title}
+            content = _prefix_section(body, title)
+            if _is_keepable_chunk(content):
+                chunks.append(Document(page_content=content, metadata=special_metadata))
+
+        if remaining:
+            header_documents = header_splitter.split_text(remaining)
+        else:
+            header_documents = []
+
+        for section in header_documents:
+            section.metadata.update(document.metadata)
+            if _matches_heading(section.metadata, _SKIP_SECTION_TITLES):
+                continue
+            path = _section_path(section.metadata)
+            if _matches_heading(section.metadata, _KEEP_WHOLE_TITLES):
+                pieces = [section.page_content]
+            else:
+                pieces = _split_preserving_atomic_blocks(section.page_content, text_splitter)
+            for piece in pieces:
+                content = _prefix_section(piece.strip(), path)
+                if _is_keepable_chunk(content):
+                    chunks.append(
+                        Document(page_content=content, metadata=dict(section.metadata))
+                    )
+    return chunks
 
 def _source_mtime() -> float:
     paths = [path for folder in (DOCUMENTS_DIR, PUBLIC_PARSE_DIR, PARSE_DIR, UPLOADS_DIR) if folder.exists() for path in folder.iterdir() if path.is_file()]
@@ -205,7 +455,7 @@ def build_or_load_vectors(force: bool = False):
     documents = _documents()
     if not documents:
         return None
-    chunks = RecursiveCharacterTextSplitter.from_language(language="markdown",chunk_size=400, chunk_overlap=50).split_documents(documents)
+    chunks = split_markdown_documents(documents)
     vectors_cache = FAISS.from_documents(chunks, current_embeddings)
     vectors_cache.save_local(str(INDEX_DIR))
     return vectors_cache
@@ -226,12 +476,15 @@ def build_graph(force: bool = False) -> nx.DiGraph:
             graph_cache = pickle.load(handle)
         return graph_cache
     graph = nx.DiGraph()
-    for document in RecursiveCharacterTextSplitter(chunk_size=400, chunk_overlap=50).split_documents(_documents()):
+    for document in split_markdown_documents(_documents()):
         entities = _entities(document.page_content)
         for name, label in entities:
+            # Adiciona o nó ao grafo com o rótulo como atributo
             graph.add_node(name, type=label)
         for index, (first, _) in enumerate(entities):
+            # Adiciona arestas para os próximos 5 nomes diferentes encontrados
             for second, _ in entities[index + 1:index + 6]:
+                # Adiciona uma aresta direcionada do primeiro para o segundo nó, incrementando o peso se a aresta já existir
                 if first != second:
                     graph.add_edge(first, second, weight=graph.get_edge_data(first, second, {}).get("weight", 0) + 1, context=document.page_content[:200])
     with GRAPH_FILE.open("wb") as handle:
@@ -247,8 +500,11 @@ def _graph_context(graph: nx.DiGraph, query: str) -> str:
         names = [node for node in graph.nodes if any(word in node.lower() for word in words)]
     relations = []
     for name in names[:5]:
+        # Adiciona as relações do nó correspondente à consulta
         for node in [node for node in graph.nodes if name.lower() in node.lower()][:2]:
+            # Adiciona as relações do nó encontrado
             for neighbor in list(graph.successors(node))[:5]:
+                # Adiciona a relação do nó para o vizinho, incluindo o contexto da aresta
                 edge = graph[node][neighbor]
                 relations.append(f"{node} -> {neighbor} | {edge.get('context', '')[:100]}")
     return "Relações (Knowledge Graph):\n" + "\n".join(relations[:8]) if relations else ""
@@ -331,11 +587,17 @@ def answer_question(query: str, options: RagOptions) -> dict:
         queries.extend(line.strip() for line in text.splitlines() if line.strip())
         metrics["multi_query"] = round((time.perf_counter() - started), 2)
     candidates, seen = [], set()
-    for current_query in queries[:4]:
-        for document in similarity_search_with_retry(vectors, current_query, k=4):
+    for query_index, current_query in enumerate(queries[:4]):
+        origem = "hyde" if options.use_hyde and query_index == 0 else (
+            "multi_query" if query_index > 0 else "faiss"
+        )
+        for position, document in enumerate(similarity_search_with_retry(vectors, current_query, k=4), 1):
             key = document.page_content[:100]
             if key not in seen:
                 seen.add(key)
+                document.metadata = dict(document.metadata)
+                document.metadata["origem"] = origem
+                document.metadata["posicao_busca"] = position
                 candidates.append(document)
     ranked = _rank(query, candidates, options.use_reranking)
     if options.use_reranking:
@@ -357,10 +619,22 @@ Resposta:
     llm_started = time.perf_counter()
     answer = _invoke_llm(prompt).content
     metrics["llm"] = round((time.perf_counter() - llm_started), 2)
+    ranked_retrieval = [
+        {
+            "rank": index,
+            "posicao": index,
+            "origem": doc.metadata.get("origem", "faiss"),
+            "posicao_busca": doc.metadata.get("posicao_busca"),
+            "filename": doc.metadata.get("filename", "?"),
+            "text": doc.page_content,
+            "preview": doc.page_content[:200],
+        }
+        for index, doc in enumerate(ranked, 1)
+    ]
     return {
         "answer": answer,
         "sources": [{"filename": doc.metadata.get("filename", "?"), "preview": doc.page_content[:200]} for doc in final_documents],
-        "ranked_retrieval": [{"rank": index, "filename": doc.metadata.get("filename", "?"), "text": doc.page_content, "preview": doc.page_content[:200]} for index, doc in enumerate(ranked, 1)],
+        "ranked_retrieval": ranked_retrieval,
         "metrics": metrics,
     }
 
