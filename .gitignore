@@ -27,6 +27,8 @@ user_data/
 
 # Configuracoes de IDEs e Editores
 .vscode/
+.claude/
+.cursor/
 .idea/
 *.suo
 *.ntvs*
@@ -38,3 +40,6 @@ user_data/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+
+docs_bkp/
