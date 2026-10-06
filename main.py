@@ -10,9 +10,6 @@ import uuid
 import pickle
 import json
 import asyncio
-import math
-import re
-import unicodedata
 from pathlib import Path
 from contextlib import contextmanager
 from typing import List, Optional
@@ -87,16 +84,6 @@ ALLOWED_ORIGINS = os.getenv(
 if not SUPABASE_URL or not SUPABASE_ANON_KEY:
     raise RuntimeError("Configure SUPABASE_URL e SUPABASE_ANON_KEY no .env")
 
-def _env_bool(*names: str, default: str = "false") -> bool:
-    for name in names:
-        value = os.getenv(name)
-        if value is not None:
-            return value.strip().lower() in ("true", "1", "yes")
-    return default.strip().lower() in ("true", "1", "yes")
-
-
-TESTE_MODE = _env_bool("TESTE_EVAL", "teste", "TEST")
-
 auth_client: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 admin_client: Optional[Client] = (
     create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
@@ -156,7 +143,6 @@ graph_cache: dict = {}
 # Helpers de disco
 # ─────────────────────────────────────────────────────────────────
 def user_storage_dir(user_id: str) -> Path:
-    '''Retorna o caminho do diretório de armazenamento do usuário, criando-o se necessário.'''
     base = Path("user_data") / user_id
     base.mkdir(parents=True, exist_ok=True)
     (base / "uploads").mkdir(exist_ok=True)
@@ -170,11 +156,9 @@ def graph_path_file(user_id: str, session_id: str) -> Path:
     return user_storage_dir(user_id) / f"graph_{session_id}.pkl"
 
 def uploads_index_path(user_id: str) -> Path:
-    '''Retorna o caminho do arquivo JSON que mantém o índice de uploads do usuário.'''
     return user_storage_dir(user_id) / "uploads_index.json"
 
 def load_uploads_index(user_id: str) -> dict:
-    '''Carrega o índice de uploads do usuário, que mapeia nomes originais para nomes seguros.'''
     p = uploads_index_path(user_id)
     if not p.exists():
         return {}
@@ -367,14 +351,14 @@ def ensure_documents_parsed(user_id: str):
     if has_unparsed_pdfs(user_base / "uploads", user_base / "parse"):
         parse_folder(user_base / "uploads", user_base / "parse")
 
+
 # ─────────────────────────────────────────────────────────────────
 # RAG
 # ─────────────────────────────────────────────────────────────────
 def load_documents(user_id: str):
-    '''Carrega documentos PDF e TXT do usuário, retornando uma lista de objetos Document.'''
     docs = []
     index = load_uploads_index(user_id)
-    safe_to_original = {v: k for k, v in index.items()}#substituo o nome do arquivo seguro pelo nome original do arquivo
+    safe_to_original = {v: k for k, v in index.items()}
 
     def resolve_filename(path: Path) -> str:
         if path.suffix.lower() == ".md":
@@ -409,7 +393,6 @@ def load_documents(user_id: str):
     return docs
 
 def should_rebuild(user_id: str, session_id: str) -> bool:
-    '''Verifica se o índice FAISS precisa ser reconstruído com base na data de modificação dos documentos.'''
     fp = faiss_path(user_id, session_id)
     if not fp.exists():
         return True
@@ -449,7 +432,6 @@ def get_rag_status(user_id: str, session_id: str) -> dict:
     }
 
 def build_or_load_vectors(user_id: str, session_id: str, force: bool = False):
-    '''Carrega ou constrói o índice FAISS para o usuário e sessão especificados.'''
     cache_key = (user_id, session_id)
     if not force and cache_key in vectors_cache:
         return vectors_cache[cache_key]
@@ -581,90 +563,15 @@ def auto_title(first_message: str) -> str:
     except Exception:
         return first_message[:40]
 
-
-# ─────────────────────────────────────────────────────────────────
-# Avaliação de chunks recuperados (NDCG / MRR) — modo teste
-# ─────────────────────────────────────────────────────────────────
-def _eval_tokenize(text: str) -> set:
-    normalized = unicodedata.normalize("NFKD", text.lower())
-    normalized = "".join(c for c in normalized if not unicodedata.combining(c))
-    return set(re.findall(r"\b\w{3,}\b", normalized))
-
-
-def _token_overlap_ratio(text_tokens: set, reference_tokens: set) -> float:
-    if not reference_tokens:
-        return 0.0
-    return len(text_tokens & reference_tokens) / len(reference_tokens)
-
-
-def chunk_relevance_score(chunk_text: str, ground_truth: str, query: str = "") -> float:
-    chunk_tokens = _eval_tokenize(chunk_text)
-    gt_score = _token_overlap_ratio(chunk_tokens, _eval_tokenize(ground_truth))
-    query_score = _token_overlap_ratio(chunk_tokens, _eval_tokenize(query))
-    return max(gt_score, query_score)
-
-
-def compute_dcg(relevances: list[float], k: int) -> float:
-    return sum(rel / math.log2(i + 2) for i, rel in enumerate(relevances[:k]))
-
-
-def compute_ndcg(relevances: list[float], k: int) -> float:
-    dcg = compute_dcg(relevances, k)
-    ideal = compute_dcg(sorted(relevances, reverse=True), k)
-    return round(dcg / ideal, 4) if ideal > 0 else 0.0
-
-
-def compute_mrr(relevances: list[float], threshold: float = 0.05) -> float:
-    for i, rel in enumerate(relevances):
-        if rel >= threshold:
-            return round(1.0 / (i + 1), 4)
-    return 0.0
-
-
-def evaluate_retrieved_chunks(docs: list, ground_truth: str, k: int, query: str = "") -> dict:
-    if not docs or not (ground_truth.strip() or query.strip()):
-        return {"k": k, "ndcg": 0.0, "mrr": 0.0, "chunks": []}
-
-    relevances = [chunk_relevance_score(d.page_content, ground_truth, query) for d in docs]
-    effective_k = max(min(k, len(relevances)), 1) if relevances else 0
-    if effective_k == 0:
-        return {"k": 0, "ndcg": 0.0, "mrr": 0.0, "chunks": []}
-
-    return {
-        "k": effective_k,
-        "ndcg": compute_ndcg(relevances, effective_k),
-        "mrr": compute_mrr(relevances),
-        "chunks": [
-            {
-                "rank": i + 1,
-                "filename": d.metadata.get("filename", "?"),
-                "relevance": round(rel, 4),
-                "preview": d.page_content[:200],
-            }
-            for i, (d, rel) in enumerate(zip(docs[:effective_k], relevances[:effective_k]))
-        ],
-    }
-
-
-def build_retrieval_eval(candidate_docs: list, final_docs: list, ground_truth: str, query: str) -> dict:
-    cand_k = max(min(8, len(candidate_docs)), 1) if candidate_docs else 0
-    final_k = max(min(4, len(final_docs)), 1) if final_docs else 0
-    return {
-        "retrieval": evaluate_retrieved_chunks(candidate_docs, ground_truth, k=cand_k, query=query),
-        "final": evaluate_retrieved_chunks(final_docs, ground_truth, k=final_k, query=query),
-    }
-
-
 def build_prompt_and_retrieve(user_input: str, user_id: str, session_id: str, body):
-    """Executa o RAG e retorna mensagens, fontes, contexto, métricas e dados de avaliação."""
+    """Executa o pipeline RAG completo e retorna (filled_messages, sources, graph_ctx, metrics, ranked_retrieval)."""
     metrics: dict = {}
-    retrieval_eval = None
 
     vectors = build_or_load_vectors(user_id, session_id)
     graph = build_graph(user_id, session_id) if body.use_graph else nx.DiGraph()
 
     if not vectors:
-        return None, [], "", metrics, [], retrieval_eval
+        return None, [], "", metrics, []
 
     with measure(metrics, "hyde"):
         search_q = hyde_query(user_input) if body.use_hyde else user_input
@@ -693,11 +600,6 @@ Pergunta original: {search_q}"""
     with measure(metrics, "reranking"):
         ranked_docs = rank_documents(user_input, candidate_docs, body.use_reranking)
         final_docs = ranked_docs[:4]
-
-    if TESTE_MODE and getattr(body, "ground_truth", None):
-        retrieval_eval = build_retrieval_eval(
-            candidate_docs, final_docs, body.ground_truth, user_input
-        )
 
     with measure(metrics, "graph"):
         graph_ctx = query_graph(graph, user_input) if body.use_graph else ""
@@ -740,7 +642,7 @@ Resposta:""")
         }
         for i, d in enumerate(ranked_docs)
     ]
-    return filled, sources, graph_ctx, metrics, ranked_retrieval, retrieval_eval
+    return filled, sources, graph_ctx, metrics, ranked_retrieval
 
 # ─────────────────────────────────────────────────────────────────
 # Pydantic Models
@@ -758,7 +660,6 @@ class ChatRequest(BaseModel):
     use_multi_query: bool = True
     use_reranking: bool = True
     use_graph: bool = True
-    ground_truth: Optional[str] = None
 
 class ProfileUpdate(BaseModel):
     full_name: Optional[str] = None
@@ -778,8 +679,6 @@ async def get_config():
         "supabase_url": SUPABASE_URL,
         "supabase_anon_key": SUPABASE_ANON_KEY,
         "api_base": os.getenv("API_BASE", "http://localhost:8000"),
-        "teste": TESTE_MODE,
-        "teste_eval": TESTE_MODE,
     }
 
 # ── Sessões ──────────────────────────────────────────────────────
@@ -830,7 +729,7 @@ async def chat(request: Request, body: ChatRequest, auth: AuthContext = Depends(
         title = auto_title(body.message)
         db_rename_session(db, body.session_id, user_id, title)
 
-    filled, sources, graph_ctx, metrics, ranked_retrieval, retrieval_eval = build_prompt_and_retrieve(
+    filled, sources, graph_ctx, metrics, ranked_retrieval = build_prompt_and_retrieve(
         body.message, user_id, body.session_id, body
     )
 
@@ -849,7 +748,7 @@ async def chat(request: Request, body: ChatRequest, auth: AuthContext = Depends(
         memory_cache[mem_key].append(AIMessage(content=answer))
 
     db_save_message(db, body.session_id, user_id, "assistant", answer)
-    response = {
+    return {
         "answer": answer,
         "sources": sources,
         "ranked_retrieval": ranked_retrieval,
@@ -857,9 +756,6 @@ async def chat(request: Request, body: ChatRequest, auth: AuthContext = Depends(
         "metrics": metrics,
         "session_renamed": len(msgs) == 1,
     }
-    if TESTE_MODE and retrieval_eval:
-        response["retrieval_eval"] = retrieval_eval
-    return response
 
 # ── Chat streaming (SSE) ──────────────────────────────────────────
 @app.post("/chat/stream")
@@ -880,7 +776,7 @@ async def chat_stream(request: Request, body: ChatRequest, auth: AuthContext = D
         new_title = auto_title(body.message)
         db_rename_session(db, body.session_id, user_id, new_title)
 
-    filled, sources, graph_ctx, metrics, ranked_retrieval, retrieval_eval = build_prompt_and_retrieve(
+    filled, sources, graph_ctx, metrics, ranked_retrieval = build_prompt_and_retrieve(
         body.message, user_id, body.session_id, body
     )
 
@@ -888,17 +784,14 @@ async def chat_stream(request: Request, body: ChatRequest, auth: AuthContext = D
 
     async def generate():
         # 1. Metadados (fontes, grafo, título, métricas do pipeline)
-        meta_payload = {
+        meta = json.dumps({
             "type": "meta",
             "sources": sources,
             "ranked_retrieval": ranked_retrieval,
             "graph_context": graph_ctx,
             "new_title": new_title,
             "metrics": metrics,
-        }
-        if TESTE_MODE and retrieval_eval:
-            meta_payload["retrieval_eval"] = retrieval_eval
-        meta = json.dumps(meta_payload, ensure_ascii=False)
+        }, ensure_ascii=False)
         yield f"data: {meta}\n\n"
 
         # 2. Streaming do LLM token a token

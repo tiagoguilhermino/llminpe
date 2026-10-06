@@ -67,10 +67,10 @@ Passo 2: Configurar o Arquivo de Variaveis de Ambiente
 Na raiz do diretorio clonado, crie um arquivo de texto com o nome exato de .env. Este arquivo contera as credenciais e chaves secretas necessarias para a comunicacao com os servicos externos. Adicione o seguinte conteudo interno, substituindo os valores ficticios pelas suas credenciais reais:
 
 NVIDIA_API_KEY=sua_chave_nvidia_nim_aqui
-SUPABASE_URL=https://nnobedsahskxeptvtxpk.supabase.co
-SUPABASE_ANON_KEY=sua_chave_anon_publica_do_supabase
-ALLOWED_ORIGINS=http://localhost:5500,http://127.0.0.1:5500,http://localhost:8000,http://127.0.0.1:8000
-ENV=dev
+SUPABASE_URL=https://seu_projeto.supabase.co
+SUPABASE_KEY=sua_chave_anon_publica_do_supabase
+ALLOWED_ORIGINS=http://localhost:5500,http://127.0.0.1:5500,http://localhost:8000
+ENV=prod
 
 Passo 3: Configurar os Recursos do WSL2 no Windows
 Caso esteja executando o Docker em ambiente Windows com WSL2, e altamente recomendavel definir limites minimos de recursos para evitar o esgotamento de memoria durante a execucao do modelo CrossEncoder local.
@@ -116,15 +116,7 @@ Para sair do modo de visualizacao continua de logs e liberar o terminal, pressio
 Execucao dos Testes de Avaliacao Automatizados
 O sistema conta com um ambiente automatizado para medicao empirica de latencia e qualidade RAG atraves do script eval_rag.py.
 
-Para disparar os testes de bancada contra o conteiner ativo, instale as dependências locais e execute:
-
-pip install -r requirements-eval.txt
+Para disparar os testes de bancada contra o conteiner ativo, garanta que possui as bibliotecas do ambiente virtual local ativas ou instaladas na sua maquina fisica e execute o comando:
 python eval_rag.py
-
-Opcionalmente, para Faithfulness com BERTScore em vez de overlap de tokens:
-pip install bert-score
-
-Ou execute dentro do container (já inclui todas as dependências):
-docker exec nimchat python eval_rag.py
 
 O script simulara o envio de perguntas padrao utilizando um token master de bypass de seguranca, testara individualmente e de forma combinada as oito configuracoes possiveis de tecnicas avancadas e exibira uma tabela de dados estruturada contendo os tempos em segundos e os indices lexicos exatos de Faithfulness e Answer Relevancy para cada rodada.

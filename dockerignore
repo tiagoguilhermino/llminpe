@@ -24,7 +24,8 @@ __pycache__/
 .git/
 .gitignore
 
-# Avaliação
+# Avaliação (não precisa no container de produção)
+eval_rag.py
 eval_results.json
 eval_report.html
 
