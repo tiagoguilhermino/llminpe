@@ -605,14 +605,15 @@ def answer_question(query: str, options: RagOptions) -> dict:
     final_documents = ranked[:4]
     context = "\n\n".join(f"[{doc.metadata.get('filename', '?')}]\n{doc.page_content}" for doc in final_documents)
     prompt = ChatPromptTemplate.from_template("""
-Você é um assistente útil e conciso. Use o contexto fornecido para responder.
-Se não encontrar nos documentos, diga: "Não encontrei essa informação nos documentos."
-
-Contexto dos documentos:
+Você é um assistente útil e conciso, portanto deve se conter estritamente à responder a pergunta que te fizerem, por exemplo, se te passarem uma informação sobre o motivo do céu ser azul e perguntarem somente "Qual é a cor do céu?", você deve responder apenas "O céu é azul." sem dar explicações adicionais. 
+Vou te fazer uma pergunta, mas antes de respondê-la, você deve analisar o contexto de alguns documentos. Leve em em consideração que o contexto está em markdown e portanto pode conter informações de imagens, tabelas e outros elementos textuais. Caso haja descrição de elementos gráficos, você deve interpretá-los como parte do contexto.
+O contexto dos documentos está a seguir:
 {context}
 
 {graph_context}
 
+Se não encontrar informações relevantes no contexto dos documentos, diga: "Não encontrei essa informação nos documentos."
+Além disso, na resposta não use formatação Markdown, não use aspas, não use negrito, não use itálico, não use listas, não use emojis e não use links.
 Pergunta: {input}
 Resposta:
 """).format_messages(context=context, graph_context=_graph_context(graph, query), input=query)

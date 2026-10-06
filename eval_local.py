@@ -46,6 +46,28 @@ def load_dataset(path: Path, limit: int | None) -> list[dict]:
 
 
 def normalize(text: str) -> str:
+    # 1. Padronização de caracteres confusos (aspas, hifens, etc)
+    # Resolve markdown inline code (remove pares de crases) antes de mexer nas avulsas
+    text = re.sub(r"`([^`]+)`", r"\1", text)
+    # Aspas simples, apóstrofos e crases avulsas (u2018, u2019, u0060, u00B4) viram aspa simples
+    text = re.sub(r"[\u2018\u2019\u0060\u00B4]", "'", text)
+    # Aspas duplas "inteligentes" (u201C, u201D) viram aspas duplas comuns
+    text = re.sub(r"[\u201C\u201D]", '"', text)
+    # Travessões e hifens longos (u2013, u2014, u2012, u2015) viram hífen comum
+    text = re.sub(r"[\u2013\u2014\u2012\u2015]", "-", text)
+
+    # 2. Remoção de metadados e Markdown
+    # Remove metadados de seção do tipo [Título > Subtítulo] no início do texto
+    text = re.sub(r"^\s*\[.*?\]\s*", "", text)
+    # Remove links e imagens em Markdown mantendo apenas o texto: ![alt](url) ou [texto](url)
+    text = re.sub(r"!?\[([^\]]*)\]\([^\)]+\)", r"\1", text)
+    # Remove tags HTML
+    text = re.sub(r"<[^>]+>", " ", text)
+    # Remove formatações de negrito e itálico
+    text = re.sub(r"(\*\*|__|\*|_)", "", text)
+    # Remove marcadores de cabeçalho (#) e blockquote (>) no início das linhas
+    text = re.sub(r"(?m)^[#>]\s*", "", text)
+    # Normalização original: minúsculas e redução de espaços
     return re.sub(r"\s+", " ", text.lower().strip())
 
 
@@ -57,8 +79,10 @@ def chunk_matches(expected: str, retrieved: str, minimum: int = 60) -> bool:
     if len(prefix) >= minimum and prefix in retrieved:
         return True
     maximum = min(len(expected), len(retrieved), 150)
+    # A janela agora desliza por todo o texto esperado (len(expected)),
+    # garantindo que trechos em comum no meio/fim não sejam ignorados
     for size in range(maximum, minimum - 1, -1):
-        for start in range(maximum - size + 1):
+        for start in range(len(expected) - size + 1):
             if expected[start : start + size] in retrieved:
                 return True
     return False
