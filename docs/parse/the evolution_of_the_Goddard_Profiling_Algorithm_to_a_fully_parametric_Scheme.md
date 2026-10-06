@@ -1,20 +1,20 @@
 
+DECEMBER 2015
 
-DECEMBER 2015 KUMMEROW ET AL. 2265
+KUMMEROW ET AL.
 
-# The Evolution of the Goddard Profiling Algorithm to a Fully Parametric Scheme
+2265
+2265
+
+## The Evolution of the Goddard Profiling Algorithm to a Fully Parametric Scheme
 
 CHRISTIAN D. KUMMEROW,\* DAVID L. RANDEL,\* MARK KULIE,<sup>+</sup> NAI-YU WANG,<sup>#</sup> RALPH FERRARO,<sup>@</sup> S. JOSEPH MUNCHAK,<sup>&</sup> AND VELJKO PETKOVIC\*
 
-\* *Department of Atmospheric Science, Colorado State University, Fort Collins, Colorado*
-
-<sup>+</sup> *University of Wisconsin–Madison, Madison, Wisconsin*
-
-<sup>#</sup> *I.M. Systems Group, and NOAA/NESDIS, College Park, Maryland*
-
-<sup>@</sup> *NOAA/NESDIS, College Park, Maryland*
-
-<sup>&</sup> *Earth System Science Interdisciplinary Center, University of Maryland, College Park, College Park, Maryland*
+\* Department of Atmospheric Science, Colorado State University, Fort Collins, Colorado
+<sup>+</sup> University of Wisconsin–Madison, Madison, Wisconsin
+<sup>#</sup> I.M. Systems Group, and NOAA/NESDIS, College Park, Maryland
+<sup>@</sup> NOAA/NESDIS, College Park, Maryland
+<sup>&</sup> Earth System Science Interdisciplinary Center, University of Maryland, College Park, College Park, Maryland
 
 (Manuscript received 10 February 2015, in final form 22 June 2015)
 
@@ -24,13 +24,13 @@ The Goddard profiling algorithm has evolved from a pseudoparametric algorithm us
 
 ## 1. Introduction
 
-The Goddard profiling (GPROF) algorithm was first developed in the early 1990s to retrieve surface rainfall and its vertical structure from spaceborne passive microwave observations (Kummerow and Giglio 1994033%3C0003:AGPAFR%3E2.0.CO;2)). The impetus for that work came from the Tropical Rainfall Measuring Mission (TRMM) (Simpson et al. 1988069%3C0278:ATRMMS%3E2.0.CO;2)) that was seeking to quantify not only the surface rainfall but also the three-dimensional structure of latent heat release in the tropics. While the primary
+The Goddard profiling (GPROF) algorithm was first developed in the early 1990s to retrieve surface rainfall and its vertical structure from spaceborne passive microwave observations (Kummerow and Giglio 1994). The impetus for that work came from the Tropical Rainfall Measuring Mission (TRMM) (Simpson et al. 1988) that was seeking to quantify not only the surface rainfall but also the three-dimensional structure of latent heat release in the tropics. While the primary structure information from TRMM was to come from its first-ever spaceborne rain radar, there was a great desire to expand the profiling work to the TRMM Microwave Imager (TMI) in order to gain both from its much wider swath and pave the way to utilizing available sensors such as the Special Sensor Microwave Imager (SSM/I) (Hollinger et al. 1990), which had been available since 1987. The algorithm was thus designed from its very inception to be *parametric* in the sense that the algorithm would work with any passive microwave sensor as long as the sensor characteristics and channel errors were properly specified. While it has taken a number of iterations, this paper describes GPROF 2014, the fully parametric algorithm, as well as the recent versions of the algorithm leading to it. The current impetus is provided by the Global Precipitation Measurement (GPM) (Hou et al. 2014), which explicitly seeks to provide
 
 structure information from TRMM was to come from its first-ever spaceborne rain radar, there was a great desire to expand the profiling work to the TRMM Microwave Imager (TMI) in order to gain both from its much wider swath and pave the way to utilizing available sensors such as the Special Sensor Microwave Imager (SSM/I) (Hollinger et al. 1990), which had been available since 1987. The algorithm was thus designed from its very inception to be *parametric* in the sense that the algorithm would work with any passive microwave sensor as long as the sensor characteristics and channel errors were properly specified. While it has taken a number of iterations, this paper describes GPROF 2014, the fully parametric algorithm, as well as the recent versions of the algorithm leading to it. The current impetus is provided by the Global Precipitation Measurement (GPM) (Hou et al. 2014), which explicitly seeks to provide
 
-*Corresponding author address:* Christian D. Kummerow, Department of Atmospheric Science, Colorado State University, 200 West Lake Street, 1371 Campus Delivery, Fort Collins, CO 80523-1371.
+Corresponding author address: Christian D. Kummerow, Department of Atmospheric Science, Colorado State University, 200 West Lake Street, 1371 Campus Delivery, Fort Collins, CO 80523-1371.
 
-E-mail: kummerow@atmos.colostate.edu
+E-mail: [kummerow@atmos.colostate.edu](mailto:kummerow@atmos.colostate.edu)
 
 DOI: 10.1175/JTECH-D-15-0039.1
 
@@ -43,11 +43,7 @@ Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 
 
 
-2266
-
-JOURNAL OF ATMOSPHERIC AND OCEANIC TECHNOLOGY
-
-VOLUME 32
+2266 JOURNAL OF ATMOSPHERIC AND OCEANIC TECHNOLOGY VOLUME 32
 
 consistent 3-hourly rainfall products from a constellation of operational and dedicated passive microwave radiometers.
 
@@ -57,7 +53,7 @@ $$ P(\mathbf{x} \mid \mathbf{y}) = \frac{P(\mathbf{y} \mid \mathbf{x})P(\mathbf{
 
 where $P(\mathbf{x} \mid \mathbf{y})$ is the *posteriori* probability of observing a particular rainfall structure **x**, when a set of brightness temperatures Tb, denoted by the vector **y** is observed. Term $P(\mathbf{y} \mid \mathbf{x})$ is the probability of making observation **y** when **x** is present, while $P(\mathbf{x})$ and $P(\mathbf{y})$ are the a priori probabilities of **x** and **y**, respectively. The latter may come from global statistics of precipitating cloud states and observations, respectively. The determination of $P(\mathbf{y} \mid \mathbf{x})$ requires a radiative transfer model that translates between state and observation space. This model may also be used to compute $P(\mathbf{y})$ if $P(\mathbf{x})$ is assumed to fully describe the a priori distribution of **x**. The a priori distribution of clouds, as mentioned before, was generally taken from cloud-resolving models as described by Tripoli (1992) and Tao and Simpson (1993).
 
-One particular problem associated with these rainfall retrievals is that the model that connects states and observations—that is $\mathbf{y} = \mathbf{F}(\mathbf{x}) + \varepsilon$ (where $\varepsilon$ is the modeling error)—is generally nonlinear and generally exhibits non-Gaussian error statistics. This more or less precludes variational solutions. It is instead more common to seek the expected value of **x**. From practical considerations, the expected value is often expressed as (Olson et al. 1996)
+One particular problem associated with these rainfall retrievals is that the model that connects states and observations—that is $\mathbf{y} = \mathbf{F}(\mathbf{x}) + \boldsymbol{\varepsilon}$ (where $\boldsymbol{\varepsilon}$ is the modeling error)—is generally nonlinear and generally exhibits non-Gaussian error statistics. This more or less precludes variational solutions. It is instead more common to seek the expected value of **x**. From practical considerations, the expected value is often expressed as (Olson et al. 1996)
 
 $$ E(\mathbf{x}) = \frac{\sum_{i} \mathbf{x}_i \exp\{-0.5[\mathbf{y} - \mathbf{F}(\mathbf{x}_i)]^T \mathbf{R}^{-1} [\mathbf{y} - \mathbf{F}(\mathbf{x}_i)]\}}{\sum_{i} \exp\{-0.5[\mathbf{y} - \mathbf{F}(\mathbf{x}_i)]^T \mathbf{R}^{-1} [\mathbf{y} - \mathbf{F}(\mathbf{x}_i)]\}} \tag{2} $$
 
@@ -84,9 +80,9 @@ DECEMBER 2015 KUMMEROW ET AL. 2267
 
 the models themselves. A number of studies (e.g., Wang et al. 2007; Caine et al. 2013; Roh and Satoh 2014) address the shortcoming in cloud microphysics that had a tendency toward too much ice in convective clouds. Such errors could not be easily corrected and simply became part of the algorithm and its overall uncertainty (Kummerow et al. 2006).
 
-# 2. The semiparametric algorithm
+## 2. The semiparametric algorithm
 
-The first attempt at making the algorithm more parametric was implemented with GPROF 2010 or TRMM 2A12, version 7, in the TRMM processing system. Over oceans this version abandoned the cloud-resolving model (CRM) database in favor of an observationally generated database that faithfully reproduced raining, nonraining, as well as convective and stratiform rain types over the oceans. The details are discussed in Kummerow et al. (2011)). They are reviewed here only for completeness. First-guess profiles are taken directly from the TRMM precipitation radar (PR) retrievals Iguchi et al. (2000)). If no precipitation is present, then an "optimal estimation" procedure is used with TMI brightness temperatures to retrieve the background water vapor, cloud water, and surface wind speed as described in Elsaesser and Kummerow (2008)). In addition, sea surface temperatures (SST) are from Reynolds et al. (2007, 2008)). Where precipitation is present in the PR footprint, the individual precipitation profile is matched to a library of available cloud-resolving model profiles. The primary role of the cloud models in this scheme is to associate parameters such as cloud water and ice to the precipitation profile as they impact the TMI brightness temperatures but are not directly observed by the radar. Forward radiative transfer computations are then performed and the resulting brightness temperatures are convolved to the appropriate TMI channels. Observed and simulated Tbs are compared. Differences are addressed by adjusting the PR precipitation profile—either by adding light precipitation below the radar's detection threshold or by adjusting the drop size distribution assumed by the radar. The resulting hydrometeor profile is thus based upon a cloud-resolving model but selected only if it fits both the observed reflectivity profile from the radar and brightness temperatures from the TMI radiometer. The database is thus fully representative of actual rainfall structures although errors in the retrieval or cloud-resolving model microphysics could still affect the overall correctness of the a priori database. One year of coincident radar/radiometer swaths, yielding approximately 65 million database entries, are used in GPROF 2010 to construct the a priori databases. This replaces the
+The first attempt at making the algorithm more parametric was implemented with GPROF 2010 or TRMM 2A12, version 7, in the TRMM processing system. Over oceans this version abandoned the cloud-resolving model (CRM) database in favor of an observationally generated database that faithfully reproduced raining, nonraining, as well as convective and stratiform rain types over the oceans. The details are discussed in Kummerow et al. (2011). They are reviewed here only for completeness. First-guess profiles are taken directly from the TRMM precipitation radar (PR) retrievals Iguchi et al. (2000). If no precipitation is present, then an ‘‘optimal estimation’’ procedure is used with TMI brightness temperatures to retrieve the background water vapor, cloud water, and surface wind speed as described in Elsaesser and Kummerow (2008). In addition, sea surface temperatures (SST) are from Reynolds et al. (2007, 2008). Where precipitation is present in the PR footprint, the individual precipitation profile is matched to a library of available cloud-resolving model profiles. The primary role of the cloud models in this scheme is to associate parameters such as cloud water and ice to the precipitation profile as they impact the TMI brightness temperatures but are not directly observed by the radar. Forward radiative transfer computations are then performed and the resulting brightness temperatures are convolved to the appropriate TMI channels. Observed and simulated Tbs are compared. Differences are addressed by adjusting the PR precipitation profile—either by adding light precipitation below the radar’s detection threshold or by adjusting the drop size distribution assumed by the radar. The resulting hydrometeor profile is thus based upon a cloud-resolving model but selected only if it fits both the observed reflectivity profile from the radar and brightness temperatures from the TMI radiometer. The database is thus fully representative of actual rainfall structures although errors in the retrieval or cloud-resolving model microphysics could still affect the overall correctness of the a priori database. One year of coincident radar/radiometer swaths, yielding approximately 65 million database entries, are used in GPROF 2010 to construct the a priori databases. This replaces the
 
 limited cloud-resolving model simulations used in earlier versions of the algorithm and eliminates the need to predetermine if pixels are raining or assigning convective/stratiform properties. The retrieval is thus fully Bayesian.
 
@@ -94,7 +90,7 @@ The robust ocean database also allows the Bayesian retrieval to limit its search
 
 The operational a priori database is built by first aggregating all the entries in a given SST/TPW bin. Bin sizes of 1 K in SST and 1 mm in TPW are used. Certain combinations of SST and TPW (e.g., SST = 298 K and TPW = 45 mm) are very common in the tropics and sometimes exceeded 300 000 entries in a single bin. While such bins are conceptually manageable, they are computationally very expensive. Profiles with self-similar Tb were therefore clustered into a maximum of 1200 unique clusters. Commonly available K-means (Forgy 1965; Hartigan and Wong 1979) clustering routines were not used because they do not preserve rainfall variance within individual Tb intervals and can thus bias the sensitivity of retrieved rainfall rates to assumed uncertainties. Instead, a bottom-up hierarchical clustering approach was implemented (Elsaesser and Kummerow 2015). A comprehensive test was performed to show that retrievals using all profiles gave the same result as retrievals using 1200 unique clusters to within 0.2% in rainfall. When the inverse occurs—namely, that not enough entries are available near the edge of the table (e.g., SST = 298 K and TPW = 10 mm)—the algorithm automatically expands the search radius over SST and TPW beyond 1 K and 1 mm until it has a minimum of 1200 profiles available. The algorithm sensitivity to errors in the prescribed SST and TPW are explored (in Tables 3 and 4) in connection with the fully parametric algorithm.
 
-The same Bayesian approach was not adopted for land backgrounds in GPROF 2010. The main difficulty over land was the lack of a physical retrieval from the TRMM PR and TMI. This was due to unknown surface emissivities and the lack of any discernable emission signal. Forced to work with only the scattering signal and having historical difficulties in separating land-related scattering signals from cold surfaces, the GPROF 2010 land code made substantial improvements over the previous version by improving the convective and stratiform rainfall delineation and the empirical
+The same Bayesian approach was not adopted for land backgrounds in GPROF 2010. The main difficulty over land was the lack of a physical retrieval from the TRMM PR and TMI. This was due to unknown surface emissivities and the lack of any discernable emission signal. Forced to work with only the scattering signal and having historical difficulties in separating ice-related scattering signals from cold surfaces, the GPROF 2010 land code made substantial improvements over the previous version by improving the convective and stratiform rainfall delineation and the empirical
 
 Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 
@@ -102,42 +98,42 @@ Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 ---
 
 
+
 2268 JOURNAL OF ATMOSPHERIC AND OCEANIC TECHNOLOGY VOLUME 32
+
+L1C Sensor Data
 
 ```mermaid
 graph TD
-    L1C[L1C Sensor DataSpacecraft position & EIAPixel Location & Time,Brightness Temperatures] --> Ocean
+    L1C["L1C Sensor DataSpacecraft position & EIAPixel Location & Time,Brightness Temperatures"]
+    Ancillary["Ancillary DataLand MasksReynolds SSTElevation"]
+    APriori["A-Priori DatabasesOcean - Each SensorCoast - SSM/I"]
+    Ocean["Ocean"]
+    Land["Land"]
+    Optimal["Optimal EstimationAlgorithm for TPW"]
+    RainNoRain["Rain / No Rain?"]
+    Bayesian["Bayesian Scheme"]
+    StratReg["StratiformRegressionScheme"]
+    ConvReg["ConvectiveRegressionScheme"]
+    Merge["Ocean / Land Merge"]
+
+    L1C --> Ocean
     L1C --> Land
-    
-    subgraph Ancillary [Ancillary Data]
-        AD[Land MasksReynolds SSTElevation]
-    end
-    AD --> OE
-    
-    subgraph Ocean_Path [Ocean]
-        OE[Optimal EstimationAlgorithm for TPW] --> BS[Bayesian Scheme]
-    end
-    
-    subgraph Land_Path [Land]
-        RNR{Rain / No Rain?}
-        RNR -- yes --> SRS[StratiformRegressionScheme]
-        RNR -- yes --> CRS[ConvectiveRegressionScheme]
-        RNR -- no --> OLM
-    end
-    
-    subgraph APD [A-Priori Databases]
-        DB[Ocean - Each SensorCoast - SSM/I]
-    end
-    DB --> BS
-    
-    BS --> OLM[Ocean / Land Merge]
-    SRS --> OLM
-    CRS --> OLM
+    Ancillary --> Optimal
+    Optimal --> Bayesian
+    APriori --> Bayesian
+    Ocean --> Optimal
+    Land --> RainNoRain
+    RainNoRain -->|yes| StratReg
+    RainNoRain -->|no| ConvReg
+    Bayesian --> Merge
+    StratReg --> Merge
+    ConvReg --> Merge
 ```
 
 FIG. 1. Algorithm flow for GPROF 2010.
 
-relationships between the surface rainfall rates and 85-GHz brightness temperatures for convective and stratiform rain. These changes significantly lower the overestimation by TMI globally and over large sections of central Africa and South America from GPROF 2004 (Liu and Zipser 2009; Wang et al. 2009). Details of the GPROF 2010 land algorithm are documented in Gopalan et al. (2010); only a brief review is given here for completeness. A scattering index (Grody 1991; Ferraro et al. 1994033<0355:AOSIFA>2.0.CO;2), 1998079<0813:AOSIFA>2.0.CO;2)) is used to determine whether the pixel is raining. Once the pixel is determined to be raining, a modification from McCollum and Ferraro’s (2003)042<0965:NCOAAS>2.0.CO;2) convective and stratiform percentages (CSP) within an 85-GHz pixel is developed to reduce the global TMI wet bias caused by the overly aggressive convective rain distribution. The next step is to develop the relationships between the surface rainfall rates (RR) for convective and stratiform rain and 85-GHz vertically polarized brightness temperatures (TB85V). Using the entire record of TRMM TMI and PR collocations, a more robust set of RR-TB85V is developed and is shown in Eqs. (3) and (4):
+relationships between the surface rainfall rates and 85-GHz brightness temperatures for convective and stratiform rain. These changes significantly lower the overestimation by TMI globally and over large sections of central Africa and South America from GPROF 2004 (Liu and Zipser 2009; Wang et al. 2009). Details of the GPROF 2010 land algorithm are documented in Gopalan et al. (2010); only a brief review is given here for completeness. A scattering index (Grody 1991; Ferraro et al. 1994, 1998) is used to determine whether the pixel is raining. Once the pixel is determined to be raining, a modification from McCollum and Ferraro’s (2003) convective and stratiform percentages (CSP) within an 85-GHz pixel is developed to reduce the global TMI wet bias caused by the overly aggressive convective rain distribution. The next step is to develop the relationships between the surface rainfall rates (RR) for convective and stratiform rain and 85-GHz vertically polarized brightness temperatures (TB85V). Using the entire record of TRMM TMI and PR collocations, a more robust set of RR-TB85V is developed and is shown in Eqs. (3) and (4):
 
 $$ \text{RR}_{\text{conv}} = -0.000\,011\,769\text{TB85V}^3 + 0.008\,026\,7\text{TB85V}^2 $$
 $$ + -1.9461\text{TB85V} + 182.677 $$
@@ -161,15 +157,11 @@ Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 
 
 
-DECEMBER 2015
+DECEMBER 2015 KUMMEROW ET AL. 2269
 
-KUMMEROW ET AL.
-
-2269
-
-## Surface Precipitation - Ocean
-### F13, F14, F15, TMI, AMSR-E
-### GPROF2010 V2 2005
+Surface Precipitation - Ocean
+F13, F14, F15, TMI, AMSR-E
+GPROF2010 V2 2005
 
 <table>
   <thead>
@@ -184,79 +176,34 @@ KUMMEROW ET AL.
   </thead>
   <tbody>
     <tr>
-        <td>80</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
-<td> </td>
-    </tr>
-<tr>
-        <td>70</td>
-<td>0.5</td>
-<td>0.5</td>
-<td>0.5</td>
-<td>0.5</td>
-<td> </td>
+        <td colspan="6">80</td>
     </tr>
 <tr>
         <td>60</td>
-<td>1.8</td>
-<td>1.8</td>
-<td>1.8</td>
-<td>1.8</td>
-<td> </td>
-    </tr>
-<tr>
-        <td>50</td>
-<td>2.5</td>
-<td>2.5</td>
-<td>2.5</td>
-<td>2.5</td>
+<td>1.5</td>
+<td>1.5</td>
+<td>1.5</td>
+<td>1.5</td>
 <td> </td>
     </tr>
 <tr>
         <td>40</td>
-<td>2.2</td>
-<td>2.2</td>
-<td>2.2</td>
-<td>2.2</td>
-<td>2.2</td>
-    </tr>
-<tr>
-        <td>30</td>
-<td>1.8</td>
-<td>1.8</td>
-<td>1.8</td>
-<td>1.8</td>
-<td>1.8</td>
+<td>2.5</td>
+<td>2.5</td>
+<td>2.5</td>
+<td>2.5</td>
+<td> </td>
     </tr>
 <tr>
         <td>20</td>
-<td>2.2</td>
-<td>2.2</td>
-<td>2.2</td>
-<td>2.2</td>
-<td>2.2</td>
-    </tr>
-<tr>
-        <td>10</td>
-<td>3.5</td>
-<td>3.5</td>
-<td>3.5</td>
-<td>3.5</td>
-<td>3.5</td>
+<td>2.0</td>
+<td>2.0</td>
+<td>2.0</td>
+<td>2.0</td>
+<td>2.0</td>
     </tr>
 <tr>
         <td>0</td>
-<td>2.5</td>
-<td>2.5</td>
-<td>2.5</td>
-<td>2.5</td>
-<td>2.5</td>
-    </tr>
-<tr>
-        <td>-10</td>
 <td>3.5</td>
 <td>3.5</td>
 <td>3.5</td>
@@ -272,59 +219,30 @@ KUMMEROW ET AL.
 <td>2.0</td>
     </tr>
 <tr>
-        <td>-30</td>
-<td>2.2</td>
-<td>2.2</td>
-<td>2.2</td>
-<td>2.2</td>
-<td>2.2</td>
-    </tr>
-<tr>
         <td>-40</td>
-<td>2.8</td>
-<td>2.8</td>
-<td>2.8</td>
-<td>2.8</td>
-<td>2.8</td>
-    </tr>
-<tr>
-        <td>-50</td>
-<td>3.2</td>
-<td>3.2</td>
-<td>3.2</td>
-<td>3.2</td>
+<td>3.0</td>
+<td>3.0</td>
+<td>3.0</td>
+<td>3.0</td>
 <td> </td>
     </tr>
 <tr>
         <td>-60</td>
-<td>1.8</td>
-<td>1.8</td>
-<td>1.8</td>
-<td>1.8</td>
+<td>1.5</td>
+<td>1.5</td>
+<td>1.5</td>
+<td>1.5</td>
 <td> </td>
     </tr>
 <tr>
-        <td>-70</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
-<td> </td>
-    </tr>
-<tr>
-        <td>-80</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
-<td> </td>
+        <td colspan="6">-80</td>
     </tr>
   </tbody>
 </table>
 
-## Surface Precipitation - Land
-### F13, F14, F15, TMI, AMSR-E
-### GPROF2010 V2 2005
+Surface Precipitation - Land
+F13, F14, F15, TMI, AMSR-E
+GPROF2010 V2 2005
 
 <table>
   <thead>
@@ -340,14 +258,6 @@ KUMMEROW ET AL.
   <tbody>
     <tr>
         <td>80</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
-<td> </td>
-    </tr>
-<tr>
-        <td>70</td>
 <td>0.5</td>
 <td>0.5</td>
 <td>0.5</td>
@@ -363,116 +273,55 @@ KUMMEROW ET AL.
 <td> </td>
     </tr>
 <tr>
-        <td>50</td>
-<td>2.2</td>
-<td>2.2</td>
-<td>2.2</td>
-<td>2.2</td>
+        <td>40</td>
+<td>2.0</td>
+<td>2.0</td>
+<td>2.0</td>
+<td>2.0</td>
 <td> </td>
     </tr>
 <tr>
-        <td>40</td>
-<td>2.5</td>
-<td>2.5</td>
-<td>2.5</td>
-<td>2.5</td>
-<td>2.5</td>
-    </tr>
-<tr>
-        <td>30</td>
-<td>2.0</td>
-<td>2.0</td>
-<td>2.0</td>
-<td>2.0</td>
-<td>2.0</td>
-    </tr>
-<tr>
         <td>20</td>
-<td>2.2</td>
-<td>2.2</td>
-<td>2.2</td>
-<td>2.2</td>
-<td>2.2</td>
-    </tr>
-<tr>
-        <td>10</td>
-<td>4.5</td>
-<td>4.5</td>
-<td>4.5</td>
-<td>4.5</td>
-<td>4.5</td>
+<td>1.5</td>
+<td>1.5</td>
+<td>1.5</td>
+<td>1.5</td>
+<td>1.5</td>
     </tr>
 <tr>
         <td>0</td>
-<td>6.5</td>
-<td>6.5</td>
-<td>6.5</td>
-<td>6.5</td>
-<td>6.5</td>
-    </tr>
-<tr>
-        <td>-10</td>
-<td>4.0</td>
-<td>4.0</td>
-<td>4.0</td>
-<td>4.0</td>
-<td>4.0</td>
+<td>6.0</td>
+<td>6.0</td>
+<td>6.0</td>
+<td>6.0</td>
+<td>6.0</td>
     </tr>
 <tr>
         <td>-20</td>
-<td>2.5</td>
-<td>2.5</td>
-<td>2.5</td>
-<td>2.5</td>
-<td>2.5</td>
-    </tr>
-<tr>
-        <td>-30</td>
-<td>1.8</td>
-<td>1.8</td>
-<td>1.8</td>
-<td>1.8</td>
-<td>1.8</td>
+<td>2.0</td>
+<td>2.0</td>
+<td>2.0</td>
+<td>2.0</td>
+<td>2.0</td>
     </tr>
 <tr>
         <td>-40</td>
-<td>1.5</td>
-<td>1.5</td>
-<td>1.5</td>
-<td>1.5</td>
-<td>1.5</td>
-    </tr>
-<tr>
-        <td>-50</td>
-<td>0.5</td>
-<td>0.5</td>
-<td>0.5</td>
-<td>0.5</td>
+<td>1.0</td>
+<td>1.0</td>
+<td>1.0</td>
+<td>1.0</td>
 <td> </td>
     </tr>
 <tr>
         <td>-60</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
+<td>0.5</td>
+<td>0.5</td>
+<td>0.5</td>
+<td>0.5</td>
 <td> </td>
     </tr>
 <tr>
-        <td>-70</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
-<td> </td>
-    </tr>
-<tr>
-        <td>-80</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
-<td> </td>
+        <td colspan="6">-80</td>
     </tr>
   </tbody>
 </table>
@@ -481,7 +330,7 @@ FIG. 2. Zonal mean precipitation corresponding to GPROF 2010 for 2005 for (left)
 
 consistent. Second, different sensor sampling times that observe the diurnal cycle of precipitation only twice per day do not result in the identical precipitation no matter the time scale one averages. This is shown in the next section on the fully parametric algorithm, when the similar sensor land differences are discussed further.
 
-Given the consistency between the satellites' estimates over ocean shown in Fig. 2, trends can also be examined by applying the algorithm to all SSM/I radiometers going back to SSM/I *F8* launched in July of 1987. Figure 3 shows oceanic mean precipitation between 70°S and 70°N from successive SSM/I and Special Sensor Microwave Imager/Sounder (SSMIS) sensors. While these sensors are different, GPROF 2010 does not make use of the sounding channels over ocean. The products from these two sensors are therefore quite similar. Only ocean trends are shown to avoid sensor differences that can be seen in Fig. 2 over land. As can be seen, different sensors are very consistent across the overlap periods, giving confidence that any trends are physical or physically based rather than sensor artifacts. A larger difference can be seen with the initial record of SSMIS *F16*, which is slightly more than 3% lower than the SSM/I *F13* and *F14* records for 2006–09. We believe this to be related to calibration uncertainties in the early *F16* record, which was difficult to make fully consistent with the other sensors.
+Given the consistency between the satellites’ estimates over ocean shown in Fig. 2, trends can also be examined by applying the algorithm to all SSM/I radiometers going back to SSM/I F8 launched in July of 1987. Figure 3 shows oceanic mean precipitation between 70°S and 70°N from successive SSM/I and Special Sensor Microwave Imager/Sounder (SSMIS) sensors. While these sensors are different, GPROF 2010 does not make use of the sounding channels over ocean. The products from these two sensors are therefore quite similar. Only ocean trends are shown to avoid sensor differences that can be seen in Fig. 2 over land. As can be seen, different sensors are very consistent across the overlap periods, giving confidence that any trends are physical or physically based rather than sensor artifacts. A larger difference can be seen with the initial record of SSMIS F16, which is slightly more than 3% lower than the SSM/I F13 and F14 records for 2006–09. We believe this to be related to calibration uncertainties in the early F16 record, which was difficult to make fully consistent with the other sensors.
 
 Profile information is reported by GPROF 2010 only over ocean, where profile information from the profile
 
@@ -491,8 +340,10 @@ database is carried along with surface precipitation. Because the land algorithm
 
 The oceanic portion of the GPROF 2010 algorithm was largely parametric. In practice, the only sensor-specific portions of the algorithm were the water vapor determination and the forward model uncertainties assigned to individual sensors in the retrieval. While the water vapor was retrieved from an optimal estimation procedure (Elsaesser and Kummerow 2008) and is thus fully parametric as implemented, the retrieval does not converge in areas of moderate to heavy precipitation. For these pixels, the TPW value was interpolated from the final threshold, where the optimal estimation algorithm was deemed to have converged. Different sensors, because of channel combinations and spatial resolution, converged differently, leaving different areas to be
 
-Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
+<footer>
 
+Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
+</footer>
 
 ---
 
@@ -512,14 +363,13 @@ Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
         <th>SSM/I F15 (RR=2.76)</th>
         <th>SSMIS F16 (RR=2.75)</th>
         <th>SSMIS F17 (RR=2.76)</th>
-        <th colspan="2">SSMIS F18 (RR=2.79)</th>
+        <th>SSMIS F18 (RR=2.79)</th>
     </tr>
   </thead>
   <tbody>
     <tr>
         <td>1988</td>
 <td>2.73</td>
-<td> </td>
 <td> </td>
 <td> </td>
 <td> </td>
@@ -540,14 +390,12 @@ Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 <td> </td>
 <td> </td>
 <td> </td>
-<td> </td>
     </tr>
 <tr>
         <td>1992</td>
 <td> </td>
 <td> </td>
 <td>2.78</td>
-<td> </td>
 <td> </td>
 <td> </td>
 <td> </td>
@@ -566,7 +414,6 @@ Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 <td> </td>
 <td> </td>
 <td> </td>
-<td> </td>
     </tr>
 <tr>
         <td>1996</td>
@@ -575,7 +422,6 @@ Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 <td> </td>
 <td> </td>
 <td>2.80</td>
-<td> </td>
 <td> </td>
 <td> </td>
 <td> </td>
@@ -592,7 +438,6 @@ Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 <td> </td>
 <td> </td>
 <td> </td>
-<td> </td>
     </tr>
 <tr>
         <td>2000</td>
@@ -603,7 +448,6 @@ Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 <td> </td>
 <td> </td>
 <td>2.75</td>
-<td> </td>
 <td> </td>
 <td> </td>
     </tr>
@@ -618,7 +462,6 @@ Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 <td> </td>
 <td>2.76</td>
 <td> </td>
-<td> </td>
     </tr>
 <tr>
         <td>2004</td>
@@ -631,7 +474,6 @@ Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 <td> </td>
 <td> </td>
 <td>2.79</td>
-<td> </td>
     </tr>
 <tr>
         <td>2006</td>
@@ -643,8 +485,7 @@ Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 <td> </td>
 <td> </td>
 <td> </td>
-<td> </td>
-<td> </td>
+<td>2.79</td>
     </tr>
 <tr>
         <td>2008</td>
@@ -656,8 +497,7 @@ Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 <td> </td>
 <td> </td>
 <td> </td>
-<td> </td>
-<td> </td>
+<td>2.79</td>
     </tr>
 <tr>
         <td>2010</td>
@@ -669,8 +509,7 @@ Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 <td> </td>
 <td> </td>
 <td> </td>
-<td> </td>
-<td> </td>
+<td>2.79</td>
     </tr>
 <tr>
         <td>2012</td>
@@ -682,8 +521,7 @@ Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 <td> </td>
 <td> </td>
 <td> </td>
-<td> </td>
-<td> </td>
+<td>2.79</td>
     </tr>
 <tr>
         <td>2014</td>
@@ -695,15 +533,14 @@ Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 <td> </td>
 <td> </td>
 <td> </td>
-<td> </td>
-<td> </td>
+<td>2.79</td>
     </tr>
   </tbody>
 </table>
 
 FIG. 3. Trends in oceanic precipitation from SSM/I and SSMIS sensors.
 
-interpolated. This coupled with the tendency for higher TPW values in precipitating regions caused biases in TPW and the subsequent rainfall retrieval. This problem is circumvented in GPROF 2014 by using TPW from reanalyses the Japanese Global Analysis (GANAL) ([JMA 2000) for near-real-time operations, and GPM standard products and the European Centre for Medium-Range Weather Forecasts (ECMWF) interim reanalysis (ERA-Interim) (Dee et al. 2011) for all other products]. The second aspect of the algorithm that was not fully parametric was the channel uncertainties assigned to sensors. For TMI, these uncertainties were determined by examining the residual differences between computed and observed Tb in the construction of the database itself. This, however, is not appropriate for other sensors. A set of coincident overpass datasets was used to adjust forward model uncertainties for radiometers other than TMI.
+interpolated. This coupled with the tendency for higher TPW values in precipitating regions caused biases in TPW and the subsequent rainfall retrieval. This problem is circumvented in GPROF 2014 by using TPW from reanalyses [the Japanese Global Analysis (GANAL) (JMA 2000) for near-real-time operations, and GPM standard products and the European Centre for Medium-Range Weather Forecasts (ECMWF) interim reanalysis (ERA-Interim) (Dee et al. 2011) for all other products]. The second aspect of the algorithm that was not fully parametric was the channel uncertainties assigned to sensors. For TMI, these uncertainties were determined by examining the residual differences between computed and observed Tb in the construction of the database itself. This, however, is not appropriate for other sensors. A set of coincident overpass datasets was used to adjust forward model uncertainties for radiometers other than TMI.
 
 Over oceans, GPROF 2014 uses the same GPROF 2010 database and subsetting into unique SST and TPW bins. Because the GPROF 2010 database is physically constructed to be consistent with both TRMM PR and TMI, it is straightforward to compute Tb for additional GPM Microwave Imager (GMI) channels, incidence angles, and horizontal resolutions. The algorithm does not make use of the higher-frequency channels of GMI (165 and 183 GHz) over ocean, as there is little confidence that these are properly constrained by the TRMM database. Given that the algorithm over ocean is primarily emission based, this is not viewed as a major shortcoming. Once enough radar data are available from the GPM dual-frequency precipitation radar
 
@@ -718,13 +555,9 @@ Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 
 
 
-DECEMBER 2015
+DECEMBER 2015 KUMMEROW ET AL. 2271
 
-K U M M E R O W E T A L .
-
-2271
-
-Surface classes defined by GPROF 2014 for a single day map
+map: Surface classes defined by GPROF 2014 for a single day
 
 FIG. 4. Surface classes defined by GPROF 2014 for a single day.
 
@@ -734,38 +567,30 @@ surface type, the model space was searched for the closest match in surface prec
 
 ```mermaid
 graph TD
-    subgraph Model_Preparation [Model Preparation]
-        MP[JMA forecast - NRTGANAL - StandardECMWF - Climatology]
-    end
+    MP["Model PreparationJMA forecast - NRTGANAL - StandardECMWF - Climatology"]
+    L1C["L1C Sensor DataSpacecraft positionPixel Location, TbsPixel Time, EIAChan Freqs & Errors"]
+    AID["Ancillary Info / DatasetsSurface & Emissivity ClassesECMWF / GANAL Model FieldsAutosnow Snow CoverReynolds Sea-Ice"]
+    PP["PreProcessor(sensor specific)"]
+    SIF["Standard input file"]
+    SPD["Sensor Profile DatabaseA-Priori Matched Profiles- TMI/ PR- AMSR-E / Cloudsat/ MHS- TMI/SSMIS/AMSRE & NMQ"]
+    GPA["GPM PrecipitationAlgorithm"]
+    GM["GPM_MERGES0, S1"]
+    POST["Post-processor(Binary to HDF5)"]
+    OUT["Complete HDF5Output file"]
+    S0["S0 output"]
+    S1["S1 output"]
 
-    subgraph L1C_Sensor_Data [L1C Sensor Data]
-        L1C[Spacecraft positionPixel Location, TbsPixel Time, EIAChan Freqs & Errors]
-    end
-
-    subgraph Ancillary_Info [Ancillary Info / Datasets]
-        AI[Surface & Emissivity ClassesECMWF / GANAL Model FieldsAutosnow Snow CoverReynolds Sea-Ice]
-    end
-
-    L1C --> PP[PreProcessor(sensor specific)]
-    AI --> PP
-    MP --> AI
-    PP --> SIF[Standard input file]
-
-    subgraph Sensor_Profile_Database [Sensor Profile Database]
-        SPD[A-Priori Matched Profiles- TMI/ PR- AMSR-E / Cloudsat/ MHS- TMI/SSMIS/AMSRE & NMQ]
-    end
-
-    SIF --> GPA[GPM PrecipitationAlgorithm]
+    MP --> AID
+    L1C --> PP
+    AID --> PP
+    PP --> SIF
+    SIF --> GPA
     SPD --> GPA
-
-    GPA --> S0[S0 output]
-    GPA --> S1[S1 output]
-
-    S0 --> GM[GPM_MERGES0, S1]
-    S1 --> GM
-
-    GM --> PostP[Post-processor(Binary to HDF5)]
-    PostP --> COF[Complete HDF5Output file]
+    GPA --> S0
+    GPA --> S1
+    GPA --> GM
+    GM --> POST
+    POST --> OUT
 ```
 
 FIG. 5. The complete GMI fully parametric algorithm flow (GPROF 2014).
@@ -873,7 +698,7 @@ TABLE 1. Channel noise and forward model errors utilized in GPROF 2014 for ocean
 
 retrieval coming from that product. This will be known as GPROF 2016 version 1. Because the product is physically based, Tbs for the remaining constellation sensors can simply be computed from the available cloud hydrometeor profiles and background conditions. Version 1 of the algorithm does not compute profile information due to the mixture of a priori information used and the inconsistency among those. GPROF 2016 will provide vertical profile information over all surfaces in the same way as GPROF 2010 provides profile information over oceans. The operational algorithm flow for processing the GMI observations, which is the fully parametric GPROF 2014 algorithm, is shown in Fig. 5.
 
-## a. Sensitivity tests
+### a. Sensitivity tests
 
 While the GPROF 2014 algorithm is considered fully parametric in the sense that the scheme is consistent among all radiometers, there are settings in the algorithm that do influence the outcome. Specifically, the sensor and forward model uncertainties and the uncertainties in the ancillary SST and TPW used to search the databases are not fully known. Because of this uncertainty, the impact of each of these assumptions is examined separately.
 
@@ -883,7 +708,7 @@ The sensor noise, or noise-equivalent change in temperature (NE$\Delta$T), is ge
 
 generally not as well known. Over oceans, GPROF 2010 and 2014 use the residual errors seen in TMI during the database construction (Kummerow et al. 2011) as an estimate for the forward model error. These uncertainties are on the order of 2–3 K at 10 GHz to 15 K at 85 GHz. Over land, the theory is even less well established and not applicable to the current version of GPROF since the database entries are constructed from observed rather than simulated Tb. To establish a best estimate for the uncertainty, GPROF 2014 used 10 days of retrievals over the continental United States (CONUS) and iteratively adjusted the channel uncertainty to maximize the fraction of retrievals that were within 50% of the NMQ value. For consistency, this is also referred to as the "forward model" uncertainty below. While this does not correspond strictly to the definition of forward model error, its values are equivalent. Table 1 summarizes the NE$\Delta$T and the forward model errors used in the operational algorithm for the TMI instrument as an example. Other sensors have similar values.
 
-There are additional uncertainties introduced as a result of the finite number of entries in the a priori database. These uncertainties have been estimated to be in the 1.5–2.5-K range. This uncertainty becomes the dominant term if databases are constructed with observed rather than computed Tb, in which case the forward model error disappears. It is not included in the GPROF 2014 database because the method of implementing the forward model error was thought to already contain this uncertainty.
+There are additional uncertainties introduced as a result of the finite number of entries in the a priori database. These uncertainties have been estimated to be in the 1.5–2.5-K range. This uncertainty becomes the dominant term if databases are constructed with observed rather than computed Tb, in which case the forward model error disappears. It is not included in the GPROF 2014 database because the method of imposing the forward model error was thought to already contain this uncertainty.
 
 Sensitivity tests were then run to test the impact of the total channel uncertainty on estimated precipitation.
 
@@ -892,10 +717,7 @@ TABLE 2. Biases (%) relative to the reference in retrieved precipitation accumul
 <table>
   <thead>
     <tr>
-        <th colspan="6">Change in total uncertainty</th>
-    </tr>
-<tr>
-        <th> </th>
+        <th>Change in total uncertainty</th>
         <th>-40%</th>
         <th>-20%</th>
         <th>Reference</th>
@@ -972,7 +794,7 @@ For the case of biases, particularly in the TPW, the impact can be seen to be ra
 
 becomes changes in the precipitation profiles as water vapor is increased. Whereas drier environments tend to show precipitation rates decreasing below cloud base as a result of evaporation, the moister environments show greater constant rainwater content with height and thus a greater surface rain rate for the same column liquid water to which the passive microwave signal is sensitive. This is equally evident in the SST biases. If SST is artificially increased without a commensurate water vapor increase, then the retrieval is forced into a drier atmospheric regime (i.e., lower relative humidity) and rain rates are seen to decrease. In practice, these biases would probably represent a worst-case scenario since SST and TPW from reanalyses would increase or decrease together. The effect would therefore be less pronounced if the database and retrieval use the same ancillary data.
 
-## b. Algorithm performance
+### b. Algorithm performance
 
 The algorithm is tested using GMI's intercalibrated (level 1C) data for all currently available microwave imagers. Figure 6 shows oceanic zonal mean rainfall accumulations averaged over a 3-month period (April, May, and June 2014) for GMI, TMI, SSMIS *F16*, *F17*, *F18*, and Advanced Microwave Scanning Radiometer 2 (AMSR2). Superimposed is the early version of the radar retrieval from GPM's Ku-band radar. While there are small variations among the different sensors, the results are consistent with a well-functioning parametric algorithm in that all the sensors show extremely similar behavior. There are differences in the diurnal sampling of the different satellites but the oceanic precipitation is fairly sinusoidal across a 24-h period so that differences are drastically reduced when ascending and descending orbits are averaged as is the case in Fig. 6. The comparison to Ku-band radar is included only to demonstrate the algorithm's consistency with GPM's early Ku-band radar product. This is not unexpected since the TRMM Ku-band radar product was used to create the a priori cloud structures for the GPROF 2014 database over oceans. There is a small but noticeable difference at very high latitudes where the Ku-band radar may not have enough sensitivity to pick up the very light precipitation (primarily snow) that can be found here. The database, it should be recalled, for these regions is based upon CloudSat precipitation rates constrained by
 
@@ -1015,452 +837,54 @@ Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 
 2274 JOURNAL OF ATMOSPHERIC AND OCEANIC TECHNOLOGY VOLUME 32
 
-Surface Accumulated Precipitation Ocean
-April, May, June 2014 65S : 65N
+Surface Accumulated Precipitation Ocean April, May, June 2014 65S : 65N Surface Accumulated Precipitation Ocean April, May, June 2014 35S : 35N
 
 <table>
   <thead>
     <tr>
-        <th>Latitude</th>
-        <th>GMI</th>
-        <th>F16</th>
-        <th>F17</th>
-        <th>F18</th>
-        <th>AMSR2</th>
-        <th>DPR Ku</th>
+        <th colspan="3">Oceanic Zonal Mean Accumulated Precipitation (April, May, June 2014)</th>
+    </tr>
+<tr>
+        <th>Sensor</th>
+        <th>65S : 65N (mm month⁻¹)</th>
+        <th>35S : 35N (mm month⁻¹)</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-        <td>70</td>
-<td>10</td>
-<td>15</td>
-<td>10</td>
-<td>10</td>
-<td>10</td>
-<td>10</td>
+        <td>GMI</td>
+<td>90.23</td>
+<td>95.24</td>
     </tr>
 <tr>
-        <td>65</td>
-<td>20</td>
-<td>25</td>
-<td>20</td>
-<td>20</td>
-<td>20</td>
-<td>20</td>
+        <td>F16</td>
+<td>90.15</td>
+<td>99.52</td>
     </tr>
 <tr>
-        <td>60</td>
-<td>35</td>
-<td>40</td>
-<td>35</td>
-<td>35</td>
-<td>35</td>
-<td>35</td>
+        <td>F17</td>
+<td>88.06</td>
+<td>97.02</td>
     </tr>
 <tr>
-        <td>55</td>
-<td>50</td>
-<td>55</td>
-<td>50</td>
-<td>50</td>
-<td>50</td>
-<td>50</td>
+        <td>F18</td>
+<td>87.22</td>
+<td>95.81</td>
     </tr>
 <tr>
-        <td>50</td>
-<td>70</td>
-<td>75</td>
-<td>70</td>
-<td>70</td>
-<td>70</td>
-<td>70</td>
+        <td>AMSR2</td>
+<td>85.37</td>
+<td>95.59</td>
     </tr>
 <tr>
-        <td>45</td>
-<td>85</td>
-<td>90</td>
-<td>85</td>
-<td>85</td>
-<td>85</td>
-<td>85</td>
+        <td>TMI 2014</td>
+<td> </td>
+<td>96.84</td>
     </tr>
 <tr>
-        <td>40</td>
-<td>100</td>
-<td>105</td>
-<td>100</td>
-<td>100</td>
-<td>100</td>
-<td>100</td>
-    </tr>
-<tr>
-        <td>35</td>
-<td>95</td>
-<td>100</td>
-<td>95</td>
-<td>95</td>
-<td>95</td>
-<td>95</td>
-    </tr>
-<tr>
-        <td>30</td>
-<td>85</td>
-<td>90</td>
-<td>85</td>
-<td>85</td>
-<td>85</td>
-<td>85</td>
-    </tr>
-<tr>
-        <td>25</td>
-<td>75</td>
-<td>80</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-    </tr>
-<tr>
-        <td>20</td>
-<td>70</td>
-<td>75</td>
-<td>70</td>
-<td>70</td>
-<td>70</td>
-<td>70</td>
-    </tr>
-<tr>
-        <td>15</td>
-<td>75</td>
-<td>80</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-    </tr>
-<tr>
-        <td>10</td>
-<td>100</td>
-<td>105</td>
-<td>100</td>
-<td>100</td>
-<td>100</td>
-<td>100</td>
-    </tr>
-<tr>
-        <td>5</td>
-<td>280</td>
-<td>290</td>
-<td>280</td>
-<td>280</td>
-<td>280</td>
-<td>280</td>
-    </tr>
-<tr>
-        <td>0</td>
-<td>150</td>
-<td>160</td>
-<td>150</td>
-<td>150</td>
-<td>150</td>
-<td>150</td>
-    </tr>
-<tr>
-        <td>-5</td>
-<td>110</td>
-<td>120</td>
-<td>110</td>
-<td>110</td>
-<td>110</td>
-<td>110</td>
-    </tr>
-<tr>
-        <td>-10</td>
-<td>90</td>
-<td>100</td>
-<td>90</td>
-<td>90</td>
-<td>90</td>
-<td>90</td>
-    </tr>
-<tr>
-        <td>-15</td>
-<td>80</td>
-<td>90</td>
-<td>80</td>
-<td>80</td>
-<td>80</td>
-<td>80</td>
-    </tr>
-<tr>
-        <td>-20</td>
-<td>75</td>
-<td>85</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-    </tr>
-<tr>
-        <td>-25</td>
-<td>80</td>
-<td>90</td>
-<td>80</td>
-<td>80</td>
-<td>80</td>
-<td>80</td>
-    </tr>
-<tr>
-        <td>-30</td>
-<td>90</td>
-<td>100</td>
-<td>90</td>
-<td>90</td>
-<td>90</td>
-<td>90</td>
-    </tr>
-<tr>
-        <td>-35</td>
-<td>110</td>
-<td>120</td>
-<td>110</td>
-<td>110</td>
-<td>110</td>
-<td>110</td>
-    </tr>
-<tr>
-        <td>-40</td>
-<td>120</td>
-<td>130</td>
-<td>120</td>
-<td>120</td>
-<td>120</td>
-<td>120</td>
-    </tr>
-<tr>
-        <td>-45</td>
-<td>110</td>
-<td>120</td>
-<td>110</td>
-<td>110</td>
-<td>110</td>
-<td>110</td>
-    </tr>
-<tr>
-        <td>-50</td>
-<td>90</td>
-<td>100</td>
-<td>90</td>
-<td>90</td>
-<td>90</td>
-<td>90</td>
-    </tr>
-<tr>
-        <td>-55</td>
-<td>70</td>
-<td>80</td>
-<td>70</td>
-<td>70</td>
-<td>70</td>
-<td>70</td>
-    </tr>
-<tr>
-        <td>-60</td>
-<td>50</td>
-<td>60</td>
-<td>50</td>
-<td>50</td>
-<td>50</td>
-<td>50</td>
-    </tr>
-<tr>
-        <td>-65</td>
-<td>30</td>
-<td>40</td>
-<td>30</td>
-<td>30</td>
-<td>30</td>
-<td>30</td>
-    </tr>
-<tr>
-        <td>-70</td>
-<td>15</td>
-<td>25</td>
-<td>15</td>
-<td>15</td>
-<td>15</td>
-<td>15</td>
-    </tr>
-  </tbody>
-</table>
-
-Surface Accumulated Precipitation Ocean
-April, May, June 2014 35S : 35N
-
-<table>
-  <thead>
-    <tr>
-        <th>Latitude</th>
-        <th>GMI</th>
-        <th>F16</th>
-        <th>F17</th>
-        <th>F18</th>
-        <th>AMSR2</th>
-        <th>TMI 2014</th>
-        <th>DPR Ku</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-        <td>35</td>
-<td>95</td>
-<td>100</td>
-<td>95</td>
-<td>95</td>
-<td>95</td>
-<td>95</td>
-<td>100</td>
-    </tr>
-<tr>
-        <td>30</td>
-<td>85</td>
-<td>90</td>
-<td>85</td>
-<td>85</td>
-<td>85</td>
-<td>85</td>
-<td>90</td>
-    </tr>
-<tr>
-        <td>25</td>
-<td>75</td>
-<td>80</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>80</td>
-    </tr>
-<tr>
-        <td>20</td>
-<td>70</td>
-<td>75</td>
-<td>70</td>
-<td>70</td>
-<td>70</td>
-<td>70</td>
-<td>75</td>
-    </tr>
-<tr>
-        <td>15</td>
-<td>75</td>
-<td>80</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>80</td>
-    </tr>
-<tr>
-        <td>10</td>
-<td>100</td>
-<td>105</td>
-<td>100</td>
-<td>100</td>
-<td>100</td>
-<td>100</td>
-<td>105</td>
-    </tr>
-<tr>
-        <td>5</td>
-<td>280</td>
-<td>290</td>
-<td>280</td>
-<td>280</td>
-<td>280</td>
-<td>280</td>
-<td>290</td>
-    </tr>
-<tr>
-        <td>0</td>
-<td>150</td>
-<td>160</td>
-<td>150</td>
-<td>150</td>
-<td>150</td>
-<td>150</td>
-<td>160</td>
-    </tr>
-<tr>
-        <td>-5</td>
-<td>110</td>
-<td>120</td>
-<td>110</td>
-<td>110</td>
-<td>110</td>
-<td>110</td>
-<td>120</td>
-    </tr>
-<tr>
-        <td>-10</td>
-<td>90</td>
-<td>100</td>
-<td>90</td>
-<td>90</td>
-<td>90</td>
-<td>90</td>
-<td>100</td>
-    </tr>
-<tr>
-        <td>-15</td>
-<td>80</td>
-<td>90</td>
-<td>80</td>
-<td>80</td>
-<td>80</td>
-<td>80</td>
-<td>90</td>
-    </tr>
-<tr>
-        <td>-20</td>
-<td>75</td>
-<td>85</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>85</td>
-    </tr>
-<tr>
-        <td>-25</td>
-<td>80</td>
-<td>90</td>
-<td>80</td>
-<td>80</td>
-<td>80</td>
-<td>80</td>
-<td>90</td>
-    </tr>
-<tr>
-        <td>-30</td>
-<td>90</td>
-<td>100</td>
-<td>90</td>
-<td>90</td>
-<td>90</td>
-<td>90</td>
-<td>100</td>
-    </tr>
-<tr>
-        <td>-35</td>
-<td>110</td>
-<td>120</td>
-<td>110</td>
-<td>110</td>
-<td>110</td>
-<td>110</td>
-<td>120</td>
+        <td>DPR Ku</td>
+<td>87.0</td>
+<td>99.6</td>
     </tr>
   </tbody>
 </table>
@@ -1471,452 +895,54 @@ AMSR-E and MHS brightness temperatures. Later versions of the a priori database 
 
 not only similar to one another but consistent with GPM’s radar–radiometer retrieval as well. This will be achieved in GPM’s GPROF 2016 version 1 radiometer algorithm after approximately one year of GPM-combined
 
-Surface Accumulated Precipitation Land
-April, May, June 2014 65S: 65N
+Surface Accumulated Precipitation Land April, May, June 2014 65S: 65N Surface Accumulated Precipitation Land April, May, June 2014 35S : 35N
 
 <table>
   <thead>
     <tr>
-        <th>Latitude</th>
-        <th>GMI</th>
-        <th>F16</th>
-        <th>F17</th>
-        <th>F18</th>
-        <th>AMSR2</th>
-        <th>DPR Ku</th>
+        <th colspan="3">Land Zonal Mean Accumulated Precipitation (April, May, June 2014)</th>
+    </tr>
+<tr>
+        <th>Sensor</th>
+        <th>65S : 65N (mm month⁻¹)</th>
+        <th>35S : 35N (mm month⁻¹)</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-        <td>70</td>
-<td>10</td>
-<td>10</td>
-<td>10</td>
-<td>10</td>
-<td>10</td>
-<td>15</td>
+        <td>GMI</td>
+<td>49.67</td>
+<td>66.88</td>
     </tr>
 <tr>
-        <td>65</td>
-<td>15</td>
-<td>15</td>
-<td>15</td>
-<td>15</td>
-<td>15</td>
-<td>20</td>
+        <td>F16</td>
+<td>48.65</td>
+<td>65.23</td>
     </tr>
 <tr>
-        <td>60</td>
-<td>25</td>
-<td>25</td>
-<td>25</td>
-<td>25</td>
-<td>25</td>
-<td>30</td>
+        <td>F17</td>
+<td>49.54</td>
+<td>66.17</td>
     </tr>
 <tr>
-        <td>55</td>
-<td>35</td>
-<td>35</td>
-<td>35</td>
-<td>35</td>
-<td>35</td>
-<td>40</td>
+        <td>F18</td>
+<td>45.36</td>
+<td>59.79</td>
     </tr>
 <tr>
-        <td>50</td>
-<td>45</td>
-<td>45</td>
-<td>45</td>
-<td>45</td>
-<td>45</td>
-<td>50</td>
+        <td>AMSR2</td>
+<td>49.28</td>
+<td>64.46</td>
     </tr>
 <tr>
-        <td>45</td>
-<td>55</td>
-<td>55</td>
-<td>55</td>
-<td>55</td>
-<td>55</td>
-<td>60</td>
+        <td>TMI 2014</td>
+<td> </td>
+<td>64.26</td>
     </tr>
 <tr>
-        <td>40</td>
-<td>65</td>
-<td>65</td>
-<td>65</td>
-<td>65</td>
-<td>65</td>
-<td>70</td>
-    </tr>
-<tr>
-        <td>35</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>80</td>
-    </tr>
-<tr>
-        <td>30</td>
-<td>85</td>
-<td>85</td>
-<td>85</td>
-<td>85</td>
-<td>85</td>
-<td>90</td>
-    </tr>
-<tr>
-        <td>25</td>
-<td>95</td>
-<td>95</td>
-<td>95</td>
-<td>95</td>
-<td>95</td>
-<td>100</td>
-    </tr>
-<tr>
-        <td>20</td>
-<td>105</td>
-<td>105</td>
-<td>105</td>
-<td>105</td>
-<td>105</td>
-<td>110</td>
-    </tr>
-<tr>
-        <td>15</td>
-<td>120</td>
-<td>120</td>
-<td>120</td>
-<td>120</td>
-<td>120</td>
-<td>130</td>
-    </tr>
-<tr>
-        <td>10</td>
-<td>150</td>
-<td>150</td>
-<td>150</td>
-<td>150</td>
-<td>150</td>
-<td>160</td>
-    </tr>
-<tr>
-        <td>5</td>
-<td>210</td>
-<td>210</td>
-<td>210</td>
-<td>210</td>
-<td>210</td>
-<td>220</td>
-    </tr>
-<tr>
-        <td>0</td>
-<td>180</td>
-<td>180</td>
-<td>180</td>
-<td>180</td>
-<td>180</td>
-<td>190</td>
-    </tr>
-<tr>
-        <td>-5</td>
-<td>140</td>
-<td>140</td>
-<td>140</td>
-<td>140</td>
-<td>140</td>
-<td>150</td>
-    </tr>
-<tr>
-        <td>-10</td>
-<td>110</td>
-<td>110</td>
-<td>110</td>
-<td>110</td>
-<td>110</td>
-<td>120</td>
-    </tr>
-<tr>
-        <td>-15</td>
-<td>90</td>
-<td>90</td>
-<td>90</td>
-<td>90</td>
-<td>90</td>
-<td>100</td>
-    </tr>
-<tr>
-        <td>-20</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>85</td>
-    </tr>
-<tr>
-        <td>-25</td>
-<td>65</td>
-<td>65</td>
-<td>65</td>
-<td>65</td>
-<td>65</td>
-<td>75</td>
-    </tr>
-<tr>
-        <td>-30</td>
-<td>55</td>
-<td>55</td>
-<td>55</td>
-<td>55</td>
-<td>55</td>
-<td>65</td>
-    </tr>
-<tr>
-        <td>-35</td>
-<td>45</td>
-<td>45</td>
-<td>45</td>
-<td>45</td>
-<td>45</td>
-<td>55</td>
-    </tr>
-<tr>
-        <td>-40</td>
-<td>40</td>
-<td>40</td>
-<td>40</td>
-<td>40</td>
-<td>40</td>
-<td>50</td>
-    </tr>
-<tr>
-        <td>-45</td>
-<td>35</td>
-<td>35</td>
-<td>35</td>
-<td>35</td>
-<td>35</td>
-<td>45</td>
-    </tr>
-<tr>
-        <td>-50</td>
-<td>30</td>
-<td>30</td>
-<td>30</td>
-<td>30</td>
-<td>30</td>
-<td>40</td>
-    </tr>
-<tr>
-        <td>-55</td>
-<td>25</td>
-<td>25</td>
-<td>25</td>
-<td>25</td>
-<td>25</td>
-<td>35</td>
-    </tr>
-<tr>
-        <td>-60</td>
-<td>20</td>
-<td>20</td>
-<td>20</td>
-<td>20</td>
-<td>20</td>
-<td>30</td>
-    </tr>
-<tr>
-        <td>-65</td>
-<td>15</td>
-<td>15</td>
-<td>15</td>
-<td>15</td>
-<td>15</td>
-<td>25</td>
-    </tr>
-<tr>
-        <td>-70</td>
-<td>10</td>
-<td>10</td>
-<td>10</td>
-<td>10</td>
-<td>10</td>
-<td>20</td>
-    </tr>
-  </tbody>
-</table>
-
-Surface Accumulated Precipitation Land
-April, May, June 2014 35S : 35N
-
-<table>
-  <thead>
-    <tr>
-        <th>Latitude</th>
-        <th>GMI</th>
-        <th>F16</th>
-        <th>F17</th>
-        <th>F18</th>
-        <th>AMSR2</th>
-        <th>TMI 2014</th>
-        <th>DPR Ku</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-        <td>35</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>80</td>
-    </tr>
-<tr>
-        <td>30</td>
-<td>85</td>
-<td>85</td>
-<td>85</td>
-<td>85</td>
-<td>85</td>
-<td>85</td>
-<td>90</td>
-    </tr>
-<tr>
-        <td>25</td>
-<td>95</td>
-<td>95</td>
-<td>95</td>
-<td>95</td>
-<td>95</td>
-<td>95</td>
-<td>100</td>
-    </tr>
-<tr>
-        <td>20</td>
-<td>105</td>
-<td>105</td>
-<td>105</td>
-<td>105</td>
-<td>105</td>
-<td>105</td>
-<td>110</td>
-    </tr>
-<tr>
-        <td>15</td>
-<td>120</td>
-<td>120</td>
-<td>120</td>
-<td>120</td>
-<td>120</td>
-<td>120</td>
-<td>130</td>
-    </tr>
-<tr>
-        <td>10</td>
-<td>150</td>
-<td>150</td>
-<td>150</td>
-<td>150</td>
-<td>150</td>
-<td>150</td>
-<td>160</td>
-    </tr>
-<tr>
-        <td>5</td>
-<td>210</td>
-<td>210</td>
-<td>210</td>
-<td>210</td>
-<td>210</td>
-<td>210</td>
-<td>220</td>
-    </tr>
-<tr>
-        <td>0</td>
-<td>180</td>
-<td>180</td>
-<td>180</td>
-<td>180</td>
-<td>180</td>
-<td>180</td>
-<td>190</td>
-    </tr>
-<tr>
-        <td>-5</td>
-<td>140</td>
-<td>140</td>
-<td>140</td>
-<td>140</td>
-<td>140</td>
-<td>140</td>
-<td>150</td>
-    </tr>
-<tr>
-        <td>-10</td>
-<td>110</td>
-<td>110</td>
-<td>110</td>
-<td>110</td>
-<td>110</td>
-<td>110</td>
-<td>120</td>
-    </tr>
-<tr>
-        <td>-15</td>
-<td>90</td>
-<td>90</td>
-<td>90</td>
-<td>90</td>
-<td>90</td>
-<td>90</td>
-<td>100</td>
-    </tr>
-<tr>
-        <td>-20</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>75</td>
-<td>85</td>
-    </tr>
-<tr>
-        <td>-25</td>
-<td>65</td>
-<td>65</td>
-<td>65</td>
-<td>65</td>
-<td>65</td>
-<td>65</td>
-<td>75</td>
-    </tr>
-<tr>
-        <td>-30</td>
-<td>55</td>
-<td>55</td>
-<td>55</td>
-<td>55</td>
-<td>55</td>
-<td>55</td>
-<td>65</td>
-    </tr>
-<tr>
-        <td>-35</td>
-<td>45</td>
-<td>45</td>
-<td>45</td>
-<td>45</td>
-<td>45</td>
-<td>45</td>
-<td>55</td>
+        <td>DPR Ku</td>
+<td>55.84</td>
+<td>70.09</td>
     </tr>
   </tbody>
 </table>
@@ -1954,123 +980,123 @@ A final assessment compares rainfall accumulations from GPROF 2014 constellation
   <tbody>
     <tr>
         <td>70</td>
+<td>15</td>
+<td>18</td>
 <td>20</td>
+<td>22</td>
 <td>25</td>
-<td>20</td>
-<td>20</td>
-<td>20</td>
     </tr>
 <tr>
         <td>60</td>
+<td>25</td>
+<td>30</td>
 <td>35</td>
 <td>40</td>
-<td>35</td>
-<td>35</td>
-<td>35</td>
+<td>45</td>
     </tr>
 <tr>
         <td>50</td>
+<td>40</td>
+<td>45</td>
+<td>50</td>
 <td>55</td>
 <td>60</td>
-<td>55</td>
-<td>55</td>
-<td>55</td>
     </tr>
 <tr>
         <td>40</td>
+<td>35</td>
+<td>40</td>
 <td>45</td>
 <td>50</td>
-<td>45</td>
-<td>45</td>
-<td>45</td>
+<td>55</td>
     </tr>
 <tr>
         <td>30</td>
-<td>65</td>
-<td>75</td>
-<td>65</td>
-<td>65</td>
-<td>65</td>
+<td>30</td>
+<td>35</td>
+<td>40</td>
+<td>45</td>
+<td>50</td>
     </tr>
 <tr>
         <td>20</td>
+<td>45</td>
+<td>50</td>
 <td>55</td>
+<td>60</td>
 <td>65</td>
-<td>55</td>
-<td>55</td>
-<td>55</td>
     </tr>
 <tr>
         <td>10</td>
-<td>120</td>
-<td>140</td>
-<td>120</td>
-<td>120</td>
-<td>120</td>
+<td>70</td>
+<td>80</td>
+<td>90</td>
+<td>100</td>
+<td>110</td>
     </tr>
 <tr>
         <td>0</td>
+<td>200</td>
+<td>210</td>
 <td>220</td>
+<td>230</td>
 <td>250</td>
-<td>220</td>
-<td>220</td>
-<td>220</td>
     </tr>
 <tr>
         <td>-10</td>
-<td>110</td>
+<td>120</td>
 <td>130</td>
-<td>110</td>
-<td>110</td>
-<td>110</td>
+<td>140</td>
+<td>150</td>
+<td>160</td>
     </tr>
 <tr>
         <td>-20</td>
 <td>60</td>
-<td>75</td>
-<td>60</td>
-<td>60</td>
-<td>60</td>
+<td>70</td>
+<td>80</td>
+<td>90</td>
+<td>100</td>
     </tr>
 <tr>
         <td>-30</td>
+<td>40</td>
+<td>45</td>
+<td>50</td>
 <td>55</td>
-<td>65</td>
-<td>55</td>
-<td>55</td>
-<td>55</td>
+<td>60</td>
     </tr>
 <tr>
         <td>-40</td>
-<td>60</td>
-<td>70</td>
-<td>60</td>
-<td>60</td>
-<td>60</td>
+<td>35</td>
+<td>40</td>
+<td>45</td>
+<td>50</td>
+<td>55</td>
     </tr>
 <tr>
         <td>-50</td>
-<td>55</td>
-<td>65</td>
-<td>55</td>
-<td>55</td>
-<td>55</td>
+<td>30</td>
+<td>35</td>
+<td>40</td>
+<td>45</td>
+<td>50</td>
     </tr>
 <tr>
         <td>-60</td>
+<td>25</td>
+<td>30</td>
+<td>35</td>
 <td>40</td>
-<td>50</td>
-<td>40</td>
-<td>40</td>
-<td>40</td>
+<td>45</td>
     </tr>
 <tr>
         <td>-70</td>
-<td>35</td>
-<td>40</td>
-<td>35</td>
-<td>35</td>
-<td>35</td>
+<td>15</td>
+<td>18</td>
+<td>20</td>
+<td>22</td>
+<td>25</td>
     </tr>
   </tbody>
 </table>
@@ -2081,7 +1107,7 @@ While still under investigation, this is likely related to the confusion between
 
 These similarities between sensors can also be seen in the April–June 2014 mean surface precipitation maps shown in Fig. 10. While consistent with the accumulations shown in Fig. 9, Fig. 10 was included to demonstrate that the spatial patterns of precipitation are also equally consistent. Small differences, of course, can be due to sampling of individual rain systems when shown on the global plot.
 
-Figure 11 shows global mean precipitation for various surface types but only for the region between 35°N and 35°S in order to include TRMM’s TMI sensor in the comparison. Snow-covered surfaces are shown but represent only very minimal area coverage in this latitude band. Additionally, the “coastline” surface class is included in this figure. While accumulations in the coastline class appear consistent among constellation sensors, GPROF 2014 tends to retrieve substantially less precipitation than GPM’s Ku-band radar algorithm. This is likely due to a very poor representation of coastlines in
+Figure 11 shows global mean precipitation for various surface types but only for the region between 35°N and 35°S in order to include TRMM’s TMI sensor in the comparison. Snow-covered surfaces are shown but represent only very minimal area coverage in this latitude band. Additionally, the "coastline" surface class is included in this figure. While accumulations in the coastline class appear consistent among constellation sensors, GPROF 2014 tends to retrieve substantially less precipitation than GPM’s Ku-band radar algorithm. This is likely due to a very poor representation of coastlines in
 
 Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 
@@ -2092,13 +1118,13 @@ Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 
 2276 JOURNAL OF ATMOSPHERIC AND OCEANIC TECHNOLOGY VOLUME 32
 
-### Accumulated Precipitation from GPM (65°S:65°N)
+Accumulated Precipitation from GPM (65°S:65°N)
 April, May, June, 2014
 
 <table>
   <thead>
     <tr>
-        <th>Vegetated Class</th>
+        <th>Surface Class</th>
         <th>GMI</th>
         <th>F16</th>
         <th>F17</th>
@@ -2112,9 +1138,9 @@ April, May, June, 2014
         <td>All Vegetated</td>
 <td>51</td>
 <td>48</td>
-<td>45</td>
 <td>46</td>
 <td>50</td>
+<td>46</td>
 <td>59</td>
     </tr>
 <tr>
@@ -2122,8 +1148,8 @@ April, May, June, 2014
 <td>82</td>
 <td>78</td>
 <td>75</td>
-<td>74</td>
-<td>71</td>
+<td>72</td>
+<td>82</td>
 <td>98</td>
     </tr>
 <tr>
@@ -2132,8 +1158,8 @@ April, May, June, 2014
 <td>44</td>
 <td>43</td>
 <td>34</td>
-<td>41</td>
-<td>58</td>
+<td>42</td>
+<td>59</td>
     </tr>
 <tr>
         <td>Medium</td>
@@ -2141,14 +1167,14 @@ April, May, June, 2014
 <td>28</td>
 <td>27</td>
 <td>26</td>
-<td>26</td>
 <td>35</td>
+<td>21</td>
     </tr>
 <tr>
         <td>Low</td>
 <td>20</td>
-<td>20</td>
 <td>21</td>
+<td>22</td>
 <td>18</td>
 <td>21</td>
 <td>19</td>
@@ -2157,21 +1183,23 @@ April, May, June, 2014
         <td>Min Vegetated</td>
 <td>9</td>
 <td>8</td>
-<td>7</td>
 <td>10</td>
-<td>9</td>
+<td>10</td>
 <td>8</td>
+<td>9</td>
     </tr>
   </tbody>
 </table>
 
-### Accumulated Precipitation from GPM (65°S:65°N)
+Accumulated Precipitation from GPM (65°S:65°N)
+
+Accumulated Precipitation from GPM (65°S:65°N)
 April, May, June, 2014
 
 <table>
   <thead>
     <tr>
-        <th>Snow Class</th>
+        <th>Surface Class</th>
         <th>GMI</th>
         <th>F16</th>
         <th>F17</th>
@@ -2185,17 +1213,17 @@ April, May, June, 2014
         <td>All Snow Covered</td>
 <td>17.5</td>
 <td>14.5</td>
-<td>15</td>
-<td>13</td>
+<td>13.5</td>
+<td>14.5</td>
 <td>23</td>
-<td>23.5</td>
+<td>14.5</td>
     </tr>
 <tr>
         <td>Maximum</td>
 <td>13</td>
 <td>12</td>
-<td>12</td>
-<td>11</td>
+<td>13.5</td>
+<td>14</td>
 <td>20.5</td>
 <td>14.5</td>
     </tr>
@@ -2204,7 +1232,7 @@ April, May, June, 2014
 <td>8</td>
 <td>7.5</td>
 <td>7.5</td>
-<td>5</td>
+<td>11.5</td>
 <td>18.5</td>
 <td>11.5</td>
     </tr>
@@ -2213,16 +1241,16 @@ April, May, June, 2014
 <td>11.5</td>
 <td>9.5</td>
 <td>8.5</td>
-<td>7.5</td>
-<td>10.5</td>
-<td>10</td>
+<td>16.5</td>
+<td>20.5</td>
+<td>13</td>
     </tr>
 <tr>
         <td>Minimum Snow</td>
-<td>20.5</td>
-<td>13</td>
+<td>20</td>
 <td>16</td>
 <td>18</td>
+<td>24.5</td>
 <td>24.5</td>
 <td>25.5</td>
     </tr>
@@ -2246,13 +1274,9 @@ Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 
 
 
-DECEMBER 2015
+DECEMBER 2015 KUMMEROW ET AL. 2277
 
-KUMMEROW ET AL.
-
-2277
-
-April–June 2014 average mean surface precipitation maps from GPM constellation conical sensors (GMI, TMI, AMSR-2, F16 SSMIS, F17 SSMIS, F18 SSMIS) with a color scale in mm/day.
+geographical_map: Six global maps showing average mean surface precipitation from different GPM constellation conical sensors (GMI, TMI, AMSR-2, F16 SSMIS, F17 SSMIS, F18 SSMIS) with a color scale in mm/day.
 
 FIG. 10. April–June 2014 average mean surface precipitation of the GPM constellation conical sensors.
 
@@ -2279,56 +1303,58 @@ Accumulated Precipitation from GPM (35°S:35°N)
 April, May, June, 2014
 
 <table>
+  <thead>
+    <tr>
+        <th>Surface Class</th>
+        <th>GMI</th>
+        <th>F16</th>
+        <th>F17</th>
+        <th>F18</th>
+        <th>AMSR2</th>
+        <th>TMI</th>
+        <th>Ku</th>
+    </tr>
+  </thead>
   <tbody>
     <tr>
-        <td>Surface Class</td>
-<td>GMI</td>
-<td>F16</td>
-<td>F17</td>
-<td>F18</td>
-<td>AMSR2</td>
-<td>TMI</td>
-<td>Ku</td>
-    </tr>
-<tr>
         <td>Ocean</td>
 <td>95</td>
-<td>100</td>
-<td>98</td>
+<td>95</td>
 <td>100</td>
 <td>95</td>
-<td>98</td>
-<td>45</td>
+<td>95</td>
+<td>95</td>
+<td>95</td>
     </tr>
 <tr>
         <td>Vegetated</td>
 <td>62</td>
 <td>62</td>
 <td>60</td>
+<td>58</td>
+<td>55</td>
 <td>60</td>
-<td>62</td>
 <td>65</td>
-<td>68</td>
     </tr>
 <tr>
         <td>Snow Covered</td>
-<td>25</td>
+<td>22</td>
 <td>15</td>
 <td>18</td>
-<td>15</td>
 <td>12</td>
-<td>20</td>
+<td>15</td>
 <td>32</td>
+<td>10</td>
     </tr>
 <tr>
         <td>Coastline</td>
 <td>82</td>
-<td>85</td>
-<td>82</td>
+<td>78</td>
+<td>75</td>
 <td>80</td>
 <td>88</td>
-<td>85</td>
 <td>125</td>
+<td>25</td>
     </tr>
   </tbody>
 </table>
@@ -2339,7 +1365,7 @@ algorithm to sounders is relatively straightforward. While microwave imagers are
 
 is interpolated to the pixel’s observed incidence angle. This same technique can be adapted for microwave sounders that tend to scan across the flight direction with variable incidence angles typically ranging from +45° to −45°. For these sensors, the algorithm uses up to six Tb sets computed at fixed angles and FOV sizes, and the retrieval is done by interpolating between the appropriate fixed angle entries. Because Tbs are rather liner over small changes in incidence angles, this technique is viewed as a straightforward extension of the GPROF
 
-Comparison of GMI GPROF precipitation and NMQ radar composite precipitation maps
+map: Comparison of GMI GPROF precipitation and NMQ radar composite precipitation over the United States
 
 FIG. 12. Comparison of the GMI GPROF 2014 retrievals compared to Multi-Radar/Multi-Sensor (MRMS)-estimated surface radar precipitation.
 
@@ -2365,20 +1391,40 @@ DECEMBER 2015 KUMMEROW ET AL. 2279
 <td>0</td>
     </tr>
 <tr>
+        <td>10</td>
+<td>2</td>
+    </tr>
+<tr>
         <td>20</td>
 <td>5</td>
     </tr>
 <tr>
+        <td>30</td>
+<td>8</td>
+    </tr>
+<tr>
         <td>40</td>
-<td>10</td>
+<td>12</td>
+    </tr>
+<tr>
+        <td>50</td>
+<td>18</td>
     </tr>
 <tr>
         <td>60</td>
-<td>20</td>
+<td>25</td>
+    </tr>
+<tr>
+        <td>70</td>
+<td>45</td>
     </tr>
 <tr>
         <td>80</td>
-<td>85</td>
+<td>95</td>
+    </tr>
+<tr>
+        <td>90</td>
+<td>100</td>
     </tr>
 <tr>
         <td>100</td>
@@ -2395,7 +1441,9 @@ algorithm described here for imagers. The sounder algorithm is being phased into
 
 The fully parametric algorithm used with GPM’s imaging radiometers, GPROF 2014, was described and initial performance characteristics were provided. The oceanic database corresponds to a previous version of GPROF and therefore offers continuity in the rainfall product while remaining relatively consistent with GPM’s early Ku-band radar product. Changes in the mean rainfall or rainfall characteristics will come about when the GPM radar/radiometer algorithm can provide a year of consistent precipitation profiles with which to create a new, physically consistent database for GMI and the other constellation radiometers over ocean, land, and high latitudes. When the new database is added to the algorithm described here, the algorithm will be incremented from GPROF 2014 version 1 to GPROF 2016 version 1.
 
-The land algorithm of GPROF 2014 is a significant departure from existing algorithms as well as previous versions of GPROF in that it no longer employs screening routines to predetermine raining pixels. Instead, the algorithm is now fully Bayesian with all pixels allowed to precipitate. Results appear to be very encouraging. It should be noted, however, that the Bayesian algorithm weights each database entry by the radiometric distance [see Eq. (2)] of that entry to the observations. As such, every pixel has some level of precipitation, albeit sometimes extremely small if the pixel brightness temperatures are largely consistent with nonraining database entries. The fraction of the solution that comes from raining versus nonraining pixels in the database is reported as the probability of precipitation in the output. Users wishing to perform basic statistics using probabilities of detection (POD) and false alarm ratios (FAR) should be aware of this probabilistic representation of the retrieval output. It is, however, a more correct representation of the inversion algorithm as passive microwave signatures do not often contain sufficient information to give unequivocal answers as to whether a cloud is precipitating.
+The land algorithm of GPROF 2014 is a significant departure from existing algorithms as well as previous versions of GPROF in that it no longer employs screening routines to predetermine raining pixels. Instead, the algorithm is now fully Bayesian with all pixels
+
+allowed to precipitate. Results appear to be very encouraging. It should be noted, however, that the Bayesian algorithm weights each database entry by the radiometric distance [see Eq. (2)] of that entry to the observations. As such, every pixel has some level of precipitation, albeit sometimes extremely small if the pixel brightness temperatures are largely consistent with nonraining database entries. The fraction of the solution that comes from raining versus nonraining pixels in the database is reported as the probability of precipitation in the output. Users wishing to perform basic statistics using probabilities of detection (POD) and false alarm ratios (FAR) should be aware of this probabilistic representation of the retrieval output. It is, however, a more correct representation of the inversion algorithm as passive microwave signatures do not often contain sufficient information to give unequivocal answers as to whether a cloud is precipitating.
 
 Acknowledgments. This project was funded under NASA Grant NNX13AG31G as part of the ongoing algorithm development effort for GPM.
 
@@ -2403,7 +1451,7 @@ Acknowledgments. This project was funded under NASA Grant NNX13AG31G as part of 
 
 Aires, F., C. Prigent, F. Bernardo, C. Jiménez, R. Saunders, and P. Brunel, 2011: A tool to estimate land-surface emissivities at microwave frequencies (TELSEM) for use in numerical weather prediction. *Quart. J. Roy. Meteor. Soc.*, **137**, 690–699, doi:10.1002/qj.803.
 
-Bauer, P., P. Amayenc, C. D. Kummerow, and E. A. Smith, 2001: Over-ocean rainfall retrieval from multisensor data of the Tropical Rainfall Measuring Mission. Part II: Algorithm implementation. *J. Atmos. Oceanic Technol.*, **18**, 1838–1855, doi:10.1175/1520-0426(2001)018<1838:OORRFM>2.0.CO;2018<1838:OORRFM>2.0.CO;2).
+Bauer, P., P. Amayenc, C. D. Kummerow, and E. A. Smith, 2001: Over-ocean rainfall retrieval from multisensor data of the Tropical Rainfall Measuring Mission. Part II: Algorithm implementation. *J. Atmos. Oceanic Technol.*, **18**, 1838–1855, doi:10.1175/1520-0426(2001)018<1838:OORRFM>2.0.CO;2.
 
 Berg, W., T. L’Ecuyer, and C. D. Kummerow, 2006: Rainfall climate regimes: The relationship of regional TRMM rainfall biases to the environment. *J. Appl. Meteor. Climatol.*, **45**, 434–454, doi:10.1175/JAM2331.1.
 
@@ -2424,17 +1472,13 @@ Unauthenticated | Downloaded 07/11/26 03:52 PM UTC
 
 
 
-2280
-
-JOURNAL OF ATMOSPHERIC AND OCEANIC TECHNOLOGY
-
-VOLUME 32
+2280 JOURNAL OF ATMOSPHERIC AND OCEANIC TECHNOLOGY VOLUME 32
 
 retrieval. *J. Appl. Meteor.*, **34**, 260–279, doi:10.1175/1520-0450-34.1.260.
 
 Ferraro, R. R., N. C. Grody, and G. F. Marks, 1994: Effects of surface conditions on rain identification using SSM/I. *Remote Sens. Rev.*, **11**, 195–209, doi:10.1080/02757259409532265.
 
-——, E. A. Smith, W. Berg, and G. J. Huffman, 1998: A screening methodology for passive microwave precipitation retrieval algorithms. *J. Atmos. Sci.*, **55**, 1583–1600, doi:10.1175/1520-0469(1998)055<1583:ASMFPM>2.0.CO;2055<1583:ASMFPM>2.0.CO;2).
+——, E. A. Smith, W. Berg, and G. J. Huffman, 1998: A screening methodology for passive microwave precipitation retrieval algorithms. *J. Atmos. Sci.*, **55**, 1583–1600, doi:10.1175/1520-0469(1998)055<1583:ASMFPM>2.0.CO;2.
 
 Forgy, E., 1965: Cluster analysis of multivariate data: Efficiency vs. interpretability of classifications. *Biometrics*, **21**, 768–769.
 
@@ -2448,11 +1492,11 @@ Hollinger, J. P., J. L. Pierce, and G. A. Poe, 1990: SSM/I instrument evaluation
 
 Hou, A. Y., and Coauthors, 2014: The Global Precipitation Measurement Mission. *Bull. Amer. Meteor. Soc.*, **95**, 701–722, doi:10.1175/BAMS-D-13-00164.1.
 
-Iguchi, T., T. Kozu, R. Meneghini, J. Awaka, and K. Okamoto, 2000: Rain-profiling algorithm for the TRMM precipitation radar. *J. Appl. Meteor.*, **39**, 2038–2052, doi:10.1175/1520-0450(2001)040<2038:RPAFTT>2.0.CO;2040<2038:RPAFTT>2.0.CO;2).
+Iguchi, T., T. Kozu, R. Meneghini, J. Awaka, and K. Okamoto, 2000: Rain-profiling algorithm for the TRMM precipitation radar. *J. Appl. Meteor.*, **39**, 2038–2052, doi:10.1175/1520-0450(2001)040<2038:RPAFTT>2.0.CO;2.
 
 JMA, 2000: New numerical analysis and forecast system (in Japanese). Japan Meteorological Agency Annual Rep. 33, 143 pp.
 
-Kummerow, C. D., and L. Giglio, 1994: A passive microwave technique for estimating rainfall and vertical structure information from space. Part I: Algorithm description. *J. Appl. Meteor.*, **33**, 3–18, doi:10.1175/1520-0450(1994)033<0003:APMTFE>2.0.CO;2033<0003:APMTFE>2.0.CO;2).
+Kummerow, C. D., and L. Giglio, 1994: A passive microwave technique for estimating rainfall and vertical structure information from space. Part I: Algorithm description. *J. Appl. Meteor.*, **33**, 3–18, doi:10.1175/1520-0450(1994)033<0003:APMTFE>2.0.CO;2.
 
 ——, W. S. Olson, and L. Giglio, 1996: A simplified scheme for obtaining precipitation and vertical hydrometeor profiles from passive microwave sensors. *IEEE Trans. Geosci. Remote Sens.*, **34**, 1213–1232, doi:10.1109/36.536538.
 
@@ -2464,11 +1508,9 @@ Liu, C., and E. J. Zipser, 2009: ‘‘Warm rain’’ in the tropics: Seasonal 
 
 Marzano, F. S., A. Mugnai, G. Panegrossi, N. Pierdicca, E. A. Smith, and J. Turk, 1999: Bayesian estimation of precipitating cloud parameters from combined measurements of airborne microwave radiometer and radar. *IEEE Trans. Geosci. Remote Sens.*, **37**, 596–613, doi:10.1109/36.739124.
 
-McCollum, J. R., and R. R. Ferraro, 2003: Next generation of NOAA/NESDIS TMI, SSM/I, and AMSR-E microwave land rainfall
+McCollum, J. R., and R. R. Ferraro, 2003: Next generation of NOAA/NESDIS TMI, SSM/I, and AMSR-E microwave land rainfall algorithms. *J. Geophys. Res.*, **108**, 8382–8404, doi:10.1029/2001JD001512.
 
-algorithms. *J. Geophys. Res.*, **108**, 8382–8404, doi:10.1029/2001JD001512.
-
-Olson, W. S., C. D. Kummerow, G. M. Heymsfield, and L. Giglio, 1996: A method for combined passive–active microwave retrievals of cloud and precipitation profiles. *J. Appl. Meteor.*, **35**, 1763–1789, doi:10.1175/1520-0450(1996)035<1763:AMFCPM>2.0.CO;2035<1763:AMFCPM>2.0.CO;2).
+Olson, W. S., C. D. Kummerow, G. M. Heymsfield, and L. Giglio, 1996: A method for combined passive–active microwave retrievals of cloud and precipitation profiles. *J. Appl. Meteor.*, **35**, 1763–1789, doi:10.1175/1520-0450(1996)035<1763:AMFCPM>2.0.CO;2.
 
 Reynolds, R. W., T. M. Smith, C. Liu, D. B. Chelton, K. S. Casey, and M. G. Schlax, 2007: Daily high-resolution-blended analyses for sea surface temperature. *J. Climate*, **20**, 5473–5496, doi:10.1175/2007JCLI1824.1.
 
@@ -2478,15 +1520,15 @@ Rodgers, C. D., 2000: *Inverse Methods for Atmospheric Sounding: Theory and Prac
 
 Roh, W., and M. Satoh, 2014: Evaluation of precipitating hydrometeor parameterizations in a single-moment bulk microphysics scheme for deep convective systems over the tropical central Pacific. *J. Atmos. Sci.*, **71**, 2654–2673, doi:10.1175/JAS-D-13-0252.1.
 
-Romanov, P., G. Gutman, and I. Csiszar, 2000: Automated monitoring of snow cover over North America with multispectral satellite data. *J. Appl. Meteor.*, **39**, 1866–1880, doi:10.1175/1520-0450(2000)039<1866:AMOSCO>2.0.CO;2039<1866:AMOSCO>2.0.CO;2).
+Romanov, P., G. Gutman, and I. Csiszar, 2000: Automated monitoring of snow cover over North America with multispectral satellite data. *J. Appl. Meteor.*, **39**, 1866–1880, doi:10.1175/1520-0450(2000)039<1866:AMOSCO>2.0.CO;2.
 
-Simpson, J., R. F. Adler, and G. R. North, 1988: A proposed Tropical Rainfall Measuring Mission (TRMM) satellite. *Bull. Amer. Meteor. Soc.*, **69**, 278–295, doi:10.1175/1520-0477(1988)069<0278:APTRMM>2.0.CO;2069<0278:APTRMM>2.0.CO;2).
+Simpson, J., R. F. Adler, and G. R. North, 1988: A proposed Tropical Rainfall Measuring Mission (TRMM) satellite. *Bull. Amer. Meteor. Soc.*, **69**, 278–295, doi:10.1175/1520-0477(1988)069<0278:APTRMM>2.0.CO;2.
 
 Tao, W.-K., and J. Simpson, 1993: Goddard cumulus ensemble model. Part I: Model description. *Terr. Atmos. Oceanic Sci.*, **4**, 35–72.
 
 ——, and Coauthors, 2009: A multiscale modeling system: Developments, applications, and critical issues. *Bull. Amer. Meteor. Soc.*, **90**, 515–534, doi:10.1175/2008BAMS2542.1.
 
-Tripoli, G. J., 1992: A nonhydrostatic model designed to simulate scale interaction. *Mon. Wea. Rev.*, **120**, 1342–1359, doi:10.1175/1520-0493(1992)120<1342:ANMMDT>2.0.CO;2120<1342:ANMMDT>2.0.CO;2).
+Tripoli, G. J., 1992: A nonhydrostatic model designed to simulate scale interaction. *Mon. Wea. Rev.*, **120**, 1342–1359, doi:10.1175/1520-0493(1992)120<1342:ANMMDT>2.0.CO;2.
 
 Viltard, N., C. Burlaud, and C. D. Kummerow, 2006: Rain retrieval from TMI brightness temperature measurements using a TRMM PR–based database. *J. Appl. Meteor. Climatol.*, **45**, 455–466, doi:10.1175/JAM2346.1.
 

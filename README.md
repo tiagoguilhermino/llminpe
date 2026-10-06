@@ -1,6 +1,35 @@
 Sistema de Chatbot RAG Avancado para o INPE
 Este projeto consiste no desenvolvimento de um sistema de chatbot inteligente baseado na arquitetura Retrieval Augmented Generation, conhecida como RAG. O objetivo principal e facilitar o acesso e a consulta a documentos tecnicos e relatórios institucionais do Instituto Nacional de Pesquisas Espaciais, o INPE.
 
+## Avaliador local de tecnicas RAG
+
+O modo recomendado para pesquisa executa o benchmark diretamente em Python. Ele nao inicia FastAPI, Docker, Supabase ou qualquer porta local. Existe apenas um usuario implícito (`local_demo`) e os documentos, o indice FAISS, o grafo e os resultados permanecem em `user_data/local_demo/`.
+
+As unicas integracoes externas usadas pelo benchmark sao:
+
+- NVIDIA: embeddings, LLM, HyDE, Multi-Query e respostas.
+- LlamaParse: conversao de PDFs novos para Markdown.
+
+Configure um arquivo `.env` a partir de `env.example` com `NVIDIA_API_KEY`. Configure tambem `LLAMA_CLOUD_API_KEY` quando houver PDFs ainda nao convertidos. Markdown e TXT podem ser indexados diretamente. O timeout padrao da NVIDIA e 120 segundos, e pode ser ajustado com `NVIDIA_TIMEOUT`; respostas do benchmark usam no maximo 2048 tokens por padrao para evitar esperas desnecessarias.
+
+Instale as dependencias do avaliador e execute:
+
+```text
+pip install -r requirements-eval.txt
+python eval_rag.py --limit 1
+```
+
+Para reconstruir o indice manualmente ou testar documentos adicionais:
+
+```text
+python eval_rag.py --rebuild
+python eval_rag.py --document caminho\para\documento.md --limit 5
+```
+
+O programa imprime os resultados das oito configuracoes RAG, incluindo Faithfulness, MRR, Recall@4, rank medio, tempo e metricas por etapa. Os resultados detalhados sao salvos em `user_data/local_demo/results/` como JSON e CSV. O FAISS existente e reutilizado enquanto os documentos nao forem alterados.
+
+O frontend e o servidor FastAPI permanecem no repositorio como legado e nao sao necessarios para os experimentos.
+
 O sistema integra quatro tecnicas avancadas de Recuperacao de Informacao que podem ser ativadas de forma modular atraves da interface. Essas tecnicas sao Hypothetical Document Embeddings, Multi Query Retrieval, Reranking com CrossEncoder e Knowledge Graph, que funciona como um Grafo de Conhecimento.
 
 A arquitetura e composta por um backend construído em FastAPI, um frontend em HTML, CSS e JavaScript puro, persistencia de dados e autenticacao via Supabase, alem do processamento de linguagem de grande escala utilizando a infraestrutura de endpoints do NVIDIA NIM.

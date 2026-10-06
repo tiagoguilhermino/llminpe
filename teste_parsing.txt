@@ -1,0 +1,7 @@
+teste 1 -> aumentando chunk size -> aparentemente não mudou muita coisa
+
+teste 2 -> usar os markdowns bufados que o Renato fez -> o retrieval parece ter melhorado um pouco
+
+teste 3 -> usar o MarkdownHeaderTextSplitter e depois o RecursiveCharacterTextSplitter
+
+teste 4-> tirar o from language do recursiver character text splitter
